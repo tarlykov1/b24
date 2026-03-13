@@ -1,13 +1,34 @@
 profile: balanced
-rate_limit: 80
+profiles:
+  safe:
+    source_rpm: 20
+    target_rpm: 20
+    heavy_rpm: 6
+    parallel_workers: 2
+  balanced:
+    source_rpm: 35
+    target_rpm: 40
+    heavy_rpm: 8
+    parallel_workers: 4
+  aggressive:
+    source_rpm: 55
+    target_rpm: 65
+    heavy_rpm: 12
+    parallel_workers: 6
+rate_limit:
+  source_rpm: 35
+  target_rpm: 40
+  heavy_rpm: 8
 batch_size: 100
+chunk_size: 500
 retry_policy:
-  max_retries: 4
-  base_delay_ms: 150
-  max_delay_ms: 4000
-api_timeout: 15
-parallel_workers: 3
+  max_retries: 6
+  base_delay_ms: 200
+  max_delay_ms: 5000
+api_timeout: 20
+parallel_workers: 4
+queue_max_size: 2000
 delta_sync_interval: 30
 freeze_mode_enabled: true
-conflict_strategy: prefer_target
+conflict_strategy: preserve_source_id
 logging_level: info
