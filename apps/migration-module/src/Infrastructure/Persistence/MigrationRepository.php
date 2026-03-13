@@ -23,6 +23,12 @@ final class MigrationRepository
     /** @var array<string, array<int, array<string, mixed>>> */
     private array $checkpoints = [];
 
+    /** @var array<string, array<int, array<string, mixed>>> */
+    private array $operatorDecisions = [];
+
+    /** @var array<string, string> */
+    private array $syncCheckpoints = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -136,4 +142,28 @@ final class MigrationRepository
     {
         return $this->jobs[$jobId]['change_log'] ?? [];
     }
+
+
+    /** @param array<string,mixed> $decision */
+    public function saveOperatorDecision(string $jobId, array $decision): void
+    {
+        $this->operatorDecisions[$jobId][] = $decision;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function operatorDecisions(string $jobId): array
+    {
+        return $this->operatorDecisions[$jobId] ?? [];
+    }
+
+    public function saveSyncCheckpoint(string $entityType, string $timestamp): void
+    {
+        $this->syncCheckpoints[$entityType] = $timestamp;
+    }
+
+    public function syncCheckpoint(string $entityType): ?string
+    {
+        return $this->syncCheckpoints[$entityType] ?? null;
+    }
+
 }

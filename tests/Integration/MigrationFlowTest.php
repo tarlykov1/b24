@@ -2,54 +2,77 @@
 
 declare(strict_types=1);
 
-use MigrationModule\Application\Runtime\MigrationRuntimeService;
-use MigrationModule\Application\Verification\VerificationService;
+use MigrationModule\Application\Plan\DryRunService;
+use MigrationModule\Application\Plan\MigrationPlanningService;
+use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
+use MigrationModule\Application\Sync\DeltaSyncService;
 use MigrationModule\Infrastructure\Persistence\MigrationRepository;
 use PHPUnit\Framework\TestCase;
 
 final class MigrationFlowTest extends TestCase
 {
-    public function testUserAndTaskMigrationAndRelationsValidation(): void
+    public function testFirstRunThenRerunWithoutChanges(): void
     {
-        $repository = new MigrationRepository();
-        $jobId = $repository->beginJob('initial');
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('initial_import');
+        $planner = new MigrationPlanningService($repo);
 
-        $source = [
-            'users' => [['id' => '1', 'email' => 'a@x.io', 'active' => true]],
-            'tasks' => [['id' => '10', 'responsible_id' => '1', 'created_by' => '1', 'deadline' => '2025-01-11', 'status' => 'new']],
-            'comments' => [['id' => '100', 'author' => '1', 'task_id' => '10', 'created_at' => '2025-01-11T10:00:00+00:00']],
-            'crm_contacts' => [], 'crm_companies' => [], 'crm_deals' => [], 'files' => [], 'custom_fields' => [],
-        ];
+        $source = ['users' => [['id' => '1', 'email' => 'a@x.io']]];
+        $target = ['users' => []];
+        $first = $planner->buildPlan($jobId, $source, $target);
+        self::assertSame(1, $first['summary']['create']);
 
-        $repository->setSourceSnapshot($jobId, $source);
-        $repository->setTargetSnapshot($jobId, $source);
-        $repository->saveMapping($jobId, 'user', '1', '1');
-        $repository->saveMapping($jobId, 'task', '10', '10');
-        $repository->saveMapping($jobId, 'comment', '100', '100');
-
-        $report = (new VerificationService($repository))->verify($jobId);
-        self::assertSame('pass', $report['integrity_check']['result']);
-        self::assertSame('pass', $report['statistics_comparison']['status']);
+        $repo->saveMapping($jobId, 'users', '1', '1');
+        $second = $planner->buildPlan($jobId, $source, ['users' => [['id' => '1', 'email' => 'a@x.io']]], true);
+        self::assertSame(1, $second['summary']['skip']);
     }
 
-    public function testPauseResumeViaCheckpointAndCrashRecovery(): void
+    public function testRerunWithNewAndChangedData(): void
     {
-        $repository = new MigrationRepository();
-        $jobId = $repository->beginJob('initial');
-        $runtime = new MigrationRuntimeService($repository);
-        $entities = [
-            ['id' => '1'], ['id' => '2'], ['id' => '3'], ['id' => '4'],
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('delta_sync');
+        $repo->saveSyncCheckpoint('users', '2025-01-01T09:00:00+00:00');
+        $delta = new DeltaSyncService($repo);
+
+        $source = [
+            ['id' => '1', 'email' => 'new@x.io', 'updated_at' => '2025-01-01T10:00:00+00:00'],
+            ['id' => '2', 'email' => 'fresh@x.io', 'updated_at' => '2025-01-01T10:00:00+00:00'],
         ];
+        $target = [['id' => '1', 'email' => 'old@x.io', 'updated_at' => '2025-01-01T08:00:00+00:00']];
 
-        try {
-            $runtime->migrateWithCheckpoint($jobId, 'user', $entities, 2, 3);
-            self::fail('Expected crash.');
-        } catch (RuntimeException) {
-            self::assertNotNull($repository->latestCheckpoint($jobId));
-        }
+        $result = $delta->detectDelta($jobId, 'users', $source, $target, $repo->syncCheckpoint('users'));
+        self::assertSame(1, $result['new']);
+        self::assertSame(1, $result['changed']);
+    }
 
-        $processedAfterRestart = $runtime->migrateWithCheckpoint($jobId, 'user', $entities, 2);
-        self::assertGreaterThan(0, $processedAfterRestart);
-        self::assertSame('4', $repository->findMappedId($jobId, 'user', '4'));
+    public function testInactiveUserCutoffSideEffectOnTasksAndIdConflictInTarget(): void
+    {
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('dry_run');
+        $dryRun = new DryRunService(new MigrationPlanningService($repo));
+
+        $source = [
+            'users' => [['id' => '99', 'email' => 'inactive@x.io', 'requires_manual_review' => true]],
+            'tasks' => [['id' => '500', 'created_by' => '99', 'responsible_id' => '99']],
+        ];
+        $target = ['users' => [['id' => '99', 'email' => 'active@x.io']], 'tasks' => [['id' => '500', 'created_by' => '1']]];
+
+        $preview = $dryRun->execute($jobId, $source, $target);
+        self::assertSame(1, $preview['summary']['manual_review']);
+        self::assertSame(1, $preview['summary']['conflicts']);
+    }
+
+    public function testVerificationPauseResumeCheckpointSimulation(): void
+    {
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('verification');
+        $repo->saveCheckpoint($jobId, ['scope' => 'verification', 'value' => 'users:50%', 'meta' => ['paused' => true]]);
+
+        $checkpoint = $repo->latestCheckpoint($jobId);
+        self::assertSame('verification', $checkpoint['scope']);
+
+        $service = new PostMigrationReconciliationService($repo);
+        $report = $service->reconcile($jobId, ['users' => [['id' => '1']]], ['users' => [['id' => '1']]]);
+        self::assertSame(1, $report['groups']['users']['matched']);
     }
 }
