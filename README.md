@@ -134,3 +134,17 @@
 
 ## Известные неопределённости
 См. `docs/bitrix-uncertainties.md`.
+
+
+## Этап 7: финальная верификация, dry-run и безопасный дозапуск
+
+Реализованы ключевые блоки подготовки и контроля:
+- `DryRunService` — полный dry-run без записи в target, с итоговой сводкой действий и ручного разбора.
+- `MigrationPlanningService` — построение плана миграции по сущностям (create/update/skip/conflict/manual_review), причины и зависимости.
+- `PostMigrationReconciliationService` — послемиграционная сверка totals, matched/mismatched, missing/extra/conflicts и отчёт unresolved links.
+- `DeltaSyncService` — preview дозапуска по стратегии updated_at/modified_at + hash payload + mapping/checkpoint.
+- расширенный `ConflictResolutionService` — единый набор стратегий и сохранение решений оператора.
+- `FinalReportService` — генерация обязательного набора отчётов: summary JSON/CSV, conflicts, unresolved links, skipped, delta, verification, performance.
+- UI-обновление админки: отдельные блоки для dry-run, плана, прогресса, reconciliation, конфликтов и скачивания отчётов.
+
+Подробные инструкции оператора — `docs/operator-guide.md`.

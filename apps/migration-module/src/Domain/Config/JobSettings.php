@@ -8,6 +8,8 @@ final class JobSettings
 {
     public function __construct(
         public readonly string $mode,
+        public readonly bool $dryRun,
+        public readonly string $speedProfile,
         public readonly ?string $inactiveUserCutoffDate,
         public readonly string $inactiveUserPolicy,
         public readonly ?string $systemAccountId,
@@ -23,6 +25,8 @@ final class JobSettings
     {
         return new self(
             (string) ($input['mode'] ?? RunMode::INITIAL_IMPORT),
+            (bool) ($input['dry_run'] ?? false),
+            (string) ($input['speed_profile'] ?? 'balanced'),
             isset($input['inactive_user_cutoff_date']) ? (string) $input['inactive_user_cutoff_date'] : null,
             (string) ($input['inactive_user_policy'] ?? InactiveUserPolicy::KEEP_USER),
             isset($input['system_account_id']) ? (string) $input['system_account_id'] : null,
@@ -38,6 +42,8 @@ final class JobSettings
     {
         return [
             'mode' => $this->mode,
+            'dry_run' => $this->dryRun,
+            'speed_profile' => $this->speedProfile,
             'inactive_user_cutoff_date' => $this->inactiveUserCutoffDate,
             'inactive_user_policy' => $this->inactiveUserPolicy,
             'system_account_id' => $this->systemAccountId,

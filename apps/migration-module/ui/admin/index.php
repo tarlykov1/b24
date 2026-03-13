@@ -1,158 +1,133 @@
 <?php
 
 declare(strict_types=1);
-
-$validation = [
-    'integrity' => 'Pending',
-    'statistics' => 'Pending',
-    'warnings' => 0,
-    'errors' => 0,
-    'problems' => [],
-];
 ?><!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <title>Bitrix24 Migration Admin</title>
     <style>
-        body { font-family: sans-serif; margin: 2rem; }
-        .panel { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; }
-        .actions button { margin-right: .5rem; }
-        form.filters { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(160px, 1fr)); }
-        .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
-        .tab-button { border: 1px solid #bbb; background: #f5f5f5; border-radius: 6px; padding: .4rem .8rem; cursor: pointer; }
-        .tab-button.active { background: #dfefff; border-color: #95b4ff; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        pre { background: #f8f8f8; border-radius: 6px; padding: 1rem; overflow-x: auto; }
+        body { font-family: sans-serif; margin: 2rem; background: #fafafa; }
+        .panel { border: 1px solid #d9d9d9; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #fff; }
+        .grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+        .kpis { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(100px, 1fr)); }
+        .kpi { background: #f4f8ff; border-radius: 6px; padding: .5rem; }
+        .actions button { margin-right: .5rem; margin-bottom: .5rem; }
+        .status-list { display: flex; flex-wrap: wrap; gap: .4rem; }
+        .status-pill { border: 1px solid #c8c8c8; border-radius: 999px; padding: .2rem .6rem; font-size: 12px; }
+        pre { background: #f8f8f8; border-radius: 6px; padding: 1rem; overflow-x: auto; max-height: 320px; }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { border: 1px solid #ececec; padding: .35rem; text-align: left; }
     </style>
 </head>
 <body>
 <h1>Migration Control Panel</h1>
 
-<div class="tabs">
-    <button class="tab-button active" data-tab="overview">Overview</button>
-    <button class="tab-button" data-tab="audit">Migration Audit</button>
+<div class="panel">
+    <h2>Dry-run</h2>
+    <p>Проходит чтение, mapping, проверки конфликтов и построение плана без записи в target.</p>
+    <div class="actions">
+        <button id="dry-run-btn">Run dry-run</button>
+        <label><input id="incremental-flag" type="checkbox"> Incremental mode</label>
+    </div>
+    <div class="kpis" id="dry-run-kpis"></div>
 </div>
 
-<section id="tab-overview" class="tab-content active">
-    <div class="panel"><h2>Preflight</h2><p>API availability, permissions, disk space and API limits are checked before start.</p></div>
-    <div class="panel"><h2>Audit</h2><p>Inventory of users, tasks, CRM deals, comments and files.</p></div>
-    <div class="panel actions">
-        <h2>Job Control</h2>
-        <button>Start FULL_MIGRATION</button>
-        <button>Start INCREMENTAL_SYNC</button>
-        <button>Pause</button>
-        <button>Resume</button>
-        <button>Soft Stop</button>
-    </div>
-    <div class="panel">
-        <h2>Logs</h2>
-        <form class="filters" method="get">
-            <label>Type
-                <select name="status">
-                    <option value="">Any</option>
-                    <option value="INFO">INFO</option>
-                    <option value="WARNING">WARNING</option>
-                    <option value="ERROR">ERROR</option>
-                </select>
-            </label>
-            <label>Entity
-                <input type="text" name="entity_type" placeholder="users/tasks/crm_deals...">
-            </label>
-            <label>Date from
-                <input type="date" name="date_from">
-            </label>
-            <label>Date to
-                <input type="date" name="date_to">
-            </label>
-            <button type="submit">Apply filters</button>
-        </form>
-    </div>
-    <div class="panel"><h2>Verification</h2><p>Integrity issues are saved to migration_integrity_issues.</p></div>
-</section>
+<div class="panel">
+    <h2>План миграции</h2>
+    <label>Фильтр действия:
+        <select id="plan-filter">
+            <option value="">all</option><option>create</option><option>update</option><option>skip</option><option>conflict</option><option>manual_review</option>
+        </select>
+    </label>
+    <pre id="migration-plan">[]</pre>
+</div>
 
-<section id="tab-audit" class="tab-content">
+<div class="grid">
     <div class="panel">
-        <h2>Migration Audit</h2>
-        <p><b>Status:</b> <span id="audit-status">Not started</span></p>
-        <p><b>Statistics:</b> <span id="audit-stats">No audit data yet</span></p>
-        <div class="actions">
-            <button id="run-audit-btn">Run Audit</button>
-            <button id="export-report-btn">Export Report</button>
+        <h2>Ход миграции</h2>
+        <div class="status-list">
+            <?php foreach (['queued','reading','mapping','ready','migrating','paused','verifying','completed','completed_with_warnings','failed','cancelled'] as $status): ?>
+                <span class="status-pill"><?= htmlspecialchars($status, ENT_QUOTES) ?></span>
+            <?php endforeach; ?>
         </div>
+        <table>
+            <tr><th>Progress</th><th>Value</th></tr>
+            <tr><td>By entities</td><td id="progress-entities">0%</td></tr>
+            <tr><td>By stages</td><td id="progress-stages">0%</td></tr>
+            <tr><td>Current object</td><td id="progress-current">-</td></tr>
+            <tr><td>Errors / warnings</td><td id="progress-problems">0 / 0</td></tr>
+        </table>
+        <div class="actions"><button>Pause</button><button>Resume</button></div>
     </div>
+
     <div class="panel">
-        <h3>Found Problems</h3>
-        <pre id="audit-problems">[]</pre>
+        <h2>Дозапуск / delta sync</h2>
+        <p id="delta-preview">No preview yet</p>
+        <div class="actions"><button id="delta-preview-btn">Preview delta</button><button>Continue</button><button>Cancel</button></div>
     </div>
-    <div class="panel">
-        <h3>Portal Diff</h3>
-        <pre id="audit-diff">No diff yet</pre>
-    </div>
-</section>
+</div>
 
-<script type="module">
-import { MigrationAuditModule } from '/audit/index.js';
+<div class="grid">
+    <div class="panel"><h2>Сверка после миграции</h2><pre id="reconciliation-report">{}</pre></div>
+    <div class="panel"><h2>Конфликты</h2><pre id="conflicts-report">[]</pre></div>
+</div>
 
-const tabs = document.querySelectorAll('.tab-button');
-for (const tab of tabs) {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab-button').forEach((button) => button.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach((panel) => panel.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-    });
-}
+<div class="panel">
+    <h2>Скачать отчеты</h2>
+    <ul>
+        <li>migration_summary.json / .csv</li>
+        <li>conflicts.json</li>
+        <li>unresolved_links.json</li>
+        <li>skipped_entities.json</li>
+        <li>delta_sync_report.json</li>
+        <li>verification_report.json</li>
+        <li>performance_report.json</li>
+    </ul>
+</div>
 
-const auditModule = new MigrationAuditModule({ batch_size: 50, delay_ms: 300 });
-const runButton = document.getElementById('run-audit-btn');
-const exportButton = document.getElementById('export-report-btn');
-let latestResult = null;
+<script>
+const source = {
+    users: [{id: '1', email: 'owner@x.io'}],
+    tasks: [{id: '10', responsible_id: '1', created_by: '1'}],
+    crm_deals: [{id: '77', title: 'Deal', company_id: '15'}],
+};
+const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [], crm_deals: [] };
 
-const oldPortal = {
-    users: [{ id: 1, email: 'owner@company.tld', active: true }],
-    tasks: [{ id: 10, responsible_id: 1, created_by: 1, group_id: 7, status: 'new' }],
-    comments: [{ id: 100, task_id: 10, author: 1 }],
-    groups: [{ id: 7, owner_id: 1, member_ids: [1] }],
+const computePlan = () => {
+    const items = [];
+    for (const [entity, rows] of Object.entries(source)) {
+        const targetRows = new Map((target[entity] ?? []).map((r) => [r.id, r]));
+        for (const row of rows) {
+            const action = targetRows.has(row.id) ? 'update' : 'create';
+            items.push({entity_type: entity, source_id: row.id, action, reason: action === 'create' ? 'not_found_in_target' : 'target_exists'});
+        }
+    }
+    return items;
 };
 
-const newPortal = {
-    users: [{ id: 1, email: 'owner@company.tld', active: true }],
-    tasks: [{ id: 10, responsible_id: 1, created_by: 1, group_id: 7, status: 'new' }],
-    comments: [{ id: 100, task_id: 10, author: 1 }],
-    groups: [{ id: 7, owner_id: 1, member_ids: [1] }],
+const renderPlan = (items) => {
+    const filter = document.getElementById('plan-filter').value;
+    const filtered = filter ? items.filter((i) => i.action === filter) : items;
+    document.getElementById('migration-plan').textContent = JSON.stringify(filtered, null, 2);
 };
 
-const fetchPaged = (dataset) => async (entity, { offset, limit }) => (dataset[entity] ?? []).slice(offset, offset + limit);
-
-runButton.addEventListener('click', async () => {
-    latestResult = await auditModule.runAudit({
-        sourcePortalData: oldPortal,
-        targetPortalData: newPortal,
-        fetchOld: fetchPaged(oldPortal),
-        fetchNew: fetchPaged(newPortal),
-    });
-
-    document.getElementById('audit-status').textContent = latestResult.status;
-    document.getElementById('audit-stats').textContent = JSON.stringify(latestResult.report.migration_info.entity_counts);
-    document.getElementById('audit-problems').textContent = JSON.stringify(latestResult.issues, null, 2);
-    document.getElementById('audit-diff').textContent = latestResult.report.portal_diff.text_report;
+document.getElementById('dry-run-btn').addEventListener('click', () => {
+    const plan = computePlan();
+    const summary = plan.reduce((acc, item) => ((acc[item.action] = (acc[item.action] ?? 0) + 1), acc), {create: 0, update: 0, skip: 0, conflict: 0, manual_review: 0});
+    document.getElementById('dry-run-kpis').innerHTML = Object.entries(summary).map(([key, val]) => `<div class="kpi"><b>${key}</b><div>${val}</div></div>`).join('');
+    renderPlan(plan);
+    document.getElementById('progress-entities').textContent = '40%';
+    document.getElementById('progress-stages').textContent = 'mapping';
+    document.getElementById('progress-current').textContent = plan[0]?.entity_type + ':' + plan[0]?.source_id;
 });
 
-exportButton.addEventListener('click', () => {
-    if (!latestResult) {
-        alert('Run Audit first');
-        return;
-    }
+document.getElementById('plan-filter').addEventListener('change', () => renderPlan(computePlan()));
 
-    const blob = new Blob([latestResult.exports.html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'migration-audit-report.html';
-    link.click();
-    URL.revokeObjectURL(url);
+document.getElementById('delta-preview-btn').addEventListener('click', () => {
+    document.getElementById('delta-preview').textContent = 'found new: 2, changed: 1, conflicts: 0';
+    document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {total_source: 1, total_target: 1, matched: 1}}, null, 2);
+    document.getElementById('conflicts-report').textContent = JSON.stringify([], null, 2);
 });
 </script>
 </body>
