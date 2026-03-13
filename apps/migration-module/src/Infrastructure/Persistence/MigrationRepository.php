@@ -29,6 +29,24 @@ final class MigrationRepository
     /** @var array<string, string> */
     private array $syncCheckpoints = [];
 
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $healingAuditLog = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $quarantine = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $retryQueue = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $deadLetterQueue = [];
+
+    /** @var array<string,array<string,int>> */
+    private array $healingAttempts = [];
+
+    /** @var array<string,array<string,mixed>> */
+    private array $manualOverrides = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -193,6 +211,74 @@ final class MigrationRepository
     public function clearCheckpoints(string $jobId): void
     {
         $this->checkpoints[$jobId] = [];
+    }
+
+    /** @param array<string,mixed> $record */
+    public function appendHealingAuditLog(string $jobId, array $record): void
+    {
+        $this->healingAuditLog[$jobId][] = $record;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function healingAuditLog(string $jobId): array
+    {
+        return $this->healingAuditLog[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $item */
+    public function addQuarantineItem(string $jobId, array $item): void
+    {
+        $this->quarantine[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function quarantineItems(string $jobId): array
+    {
+        return $this->quarantine[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $item */
+    public function addRetryItem(string $jobId, array $item): void
+    {
+        $this->retryQueue[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function retryItems(string $jobId): array
+    {
+        return $this->retryQueue[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $item */
+    public function addDeadLetterItem(string $jobId, array $item): void
+    {
+        $this->deadLetterQueue[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function deadLetterItems(string $jobId): array
+    {
+        return $this->deadLetterQueue[$jobId] ?? [];
+    }
+
+    public function incrementHealingAttempt(string $jobId, string $categoryKey, string $entityId): int
+    {
+        $key = sprintf('%s:%s', $categoryKey, $entityId);
+        $this->healingAttempts[$jobId][$key] = ($this->healingAttempts[$jobId][$key] ?? 0) + 1;
+
+        return $this->healingAttempts[$jobId][$key];
+    }
+
+    /** @param array<string,mixed> $override */
+    public function saveManualOverride(string $jobId, string $overrideKey, array $override): void
+    {
+        $this->manualOverrides[$jobId . ':' . $overrideKey] = $override;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function manualOverride(string $jobId, string $overrideKey): ?array
+    {
+        return $this->manualOverrides[$jobId . ':' . $overrideKey] ?? null;
     }
 
 }
