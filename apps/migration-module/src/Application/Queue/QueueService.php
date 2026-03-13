@@ -4,38 +4,34 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Queue;
 
+use MigrationModule\Application\Throttling\ThrottlingService;
 use MigrationModule\Domain\Queue\QueueItem;
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
+use SplQueue;
 
 final class QueueService
 {
-    public function __construct(private readonly MigrationRepository $repository)
+    /** @var SplQueue<QueueItem> */
+    private SplQueue $queue;
+
+    public function __construct(private readonly ThrottlingService $throttlingService)
     {
+        $this->queue = new SplQueue();
     }
 
-    public function enqueue(string $jobId, QueueItem $item): bool
+    public function enqueue(QueueItem $item): void
     {
-        return $this->repository->enqueue($jobId, [
-            'entity_type' => $item->entityType,
-            'operation' => $item->operation,
-            'dedupe_key' => $item->dedupeKey,
-            'payload' => $item->payload,
-        ]);
+        $this->queue->enqueue($item);
     }
 
     /** @return array<int, QueueItem> */
     public function reserve(string $jobId, int $limit): array
     {
-        return array_map(static fn (array $row): QueueItem => new QueueItem(
-            (string) $row['entity_type'],
-            (string) $row['operation'],
-            (string) $row['dedupe_key'],
-            (array) $row['payload'],
-        ), $this->repository->reserveQueue($jobId, $limit));
-    }
+        $reserved = [];
+        while (!$this->queue->isEmpty() && count($reserved) < $limit) {
+            $this->throttlingService->throttle();
+            $reserved[] = $this->queue->dequeue();
+        }
 
-    public function markDone(string $jobId, string $dedupeKey): void
-    {
-        $this->repository->completeQueueItem($jobId, $dedupeKey);
+        return $reserved;
     }
 }

@@ -4,27 +4,24 @@ declare(strict_types=1);
 
 namespace MigrationModule\Infrastructure\Http;
 
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
+use MigrationModule\Infrastructure\Persistence\Log\MigrationLogRepositoryInterface;
 
 final class AdminController
 {
-    public function __construct(private readonly MigrationRepository $repository)
+    public function __construct(private readonly MigrationLogRepositoryInterface $logRepository)
     {
     }
 
-    /** @return array<string,mixed> */
-    public function dashboard(string $jobId): array
+    /** @param array{status?:string,entity_type?:string,date_from?:string,date_to?:string} $filters
+     * @return array<int, array<string,mixed>>
+     */
+    public function logs(array $filters): array
     {
-        return [
-            'job' => $this->repository->getJob($jobId),
-            'metrics' => $this->repository->metrics($jobId),
-            'diff' => $this->repository->diffsByJob($jobId),
-            'logs' => $this->repository->logsByJob($jobId),
-        ];
+        return $this->logRepository->findByFilters($filters);
     }
 
     public function index(): string
     {
-        return 'Migration admin UI ready';
+        return 'Migration admin UI: use filters by type, date and entity';
     }
 }

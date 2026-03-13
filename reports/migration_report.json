@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-01-10T12:45:33+03:00",
+  "migrated": {
+    "users": 124,
+    "tasks": 542,
+    "crm_deals": 318,
+    "comments": 1821,
+    "files": 907
+  },
+  "errors": 3,
+  "warnings": 14,
+  "duration_seconds": 2568.42
+}

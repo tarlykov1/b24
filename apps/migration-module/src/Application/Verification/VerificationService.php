@@ -4,58 +4,129 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Verification;
 
-use MigrationModule\Application\Validation\IntegrityCheckService;
-use MigrationModule\Application\Validation\MigrationReportService;
-use MigrationModule\Application\Validation\ReferenceIntegrityService;
-use MigrationModule\Application\Validation\StatisticsComparisonService;
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
+use DateTimeImmutable;
+use MigrationModule\Application\Logging\MigrationLogger;
+use MigrationModule\Domain\Integrity\IntegrityIssue;
+use MigrationModule\Infrastructure\Persistence\MigrationIntegrityIssueRepository;
 
 final class VerificationService
 {
     public function __construct(
-        private readonly MigrationRepository $repository,
-        private readonly IntegrityCheckService $integrityCheckService = new IntegrityCheckService(),
-        private readonly ReferenceIntegrityService $referenceIntegrityService = new ReferenceIntegrityService(),
-        private readonly StatisticsComparisonService $statisticsComparisonService = new StatisticsComparisonService(),
-        private readonly MigrationReportService $migrationReportService = new MigrationReportService(),
-        private readonly string $reportDir = 'apps/migration-module/var/reports',
+        private readonly MigrationIntegrityIssueRepository $issueRepository,
+        private readonly MigrationLogger $logger,
     ) {
     }
 
-    /** @return array<string, mixed> */
-    public function verify(string $jobId, bool $validationOnly = false): array
+    /**
+     * @param array<int, array<string, mixed>> $records
+     * @return array{checked:int,issues:int}
+     */
+    public function verify(string $entityType, array $records): array
     {
-        $source = $this->repository->sourceSnapshot($jobId);
-        $target = $this->repository->targetSnapshot($jobId);
-        $integrity = $this->integrityCheckService->run($source, $target, $this->repository->mappings($jobId));
-        $references = $this->referenceIntegrityService->validate($target);
-        $statistics = $this->statisticsComparisonService->compare($source, $target);
+        $issues = 0;
 
-        $job = [
-            'mode' => $validationOnly ? 'validation_only' : 'initial',
-            'started_at' => new \DateTimeImmutable('-5 minutes'),
-            'ended_at' => new \DateTimeImmutable(),
-            'metrics' => [
-                'processed' => array_sum(array_map('count', $target)),
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'errors' => count($integrity['problems']) + count($references),
-                'batch_avg_ms' => 120.5,
-                'api_requests' => 87,
-                'retries' => 3,
-            ],
-        ];
-
-        $report = $this->migrationReportService->build($job, $integrity, $statistics, $references);
-        $this->repository->saveReport($jobId, $report);
-
-        if (!is_dir($this->reportDir)) {
-            mkdir($this->reportDir, 0777, true);
+        foreach ($records as $record) {
+            foreach ($this->detectIssues($entityType, $record) as $issue) {
+                $this->issueRepository->save($issue);
+                $this->logger->warning('integrity_check', $entityType, $issue->entityId, $issue->description);
+                $issues++;
+            }
         }
 
-        file_put_contents(sprintf('%s/%s-report.json', $this->reportDir, $jobId), $this->migrationReportService->toJson($report));
+        $this->logger->info('integrity_check_completed', $entityType, null, sprintf('Checked: %d, issues: %d', count($records), $issues));
 
-        return $report;
+        return ['checked' => count($records), 'issues' => $issues];
+    }
+
+    /** @param array<string, mixed> $record
+     *  @return array<int, IntegrityIssue>
+     */
+    private function detectIssues(string $entityType, array $record): array
+    {
+        return match ($entityType) {
+            'users' => $this->checkUsers($record),
+            'tasks' => $this->checkTasks($record),
+            'crm_deals' => $this->checkDeals($record),
+            'comments' => $this->checkComments($record),
+            'files' => $this->checkFiles($record),
+            default => [],
+        };
+    }
+
+    /** @return array<int, IntegrityIssue> */
+    private function checkUsers(array $record): array
+    {
+        $issues = [];
+        if (empty($record['email'])) {
+            $issues[] = $this->issue('users', (string) $record['id'], 'missing_email', 'User has no email');
+        }
+        if (!isset($record['active'])) {
+            $issues[] = $this->issue('users', (string) $record['id'], 'missing_activity_flag', 'User activity flag is absent');
+        }
+
+        return $issues;
+    }
+
+    /** @return array<int, IntegrityIssue> */
+    private function checkTasks(array $record): array
+    {
+        $issues = [];
+        if (empty($record['author_id'])) {
+            $issues[] = $this->issue('tasks', (string) $record['id'], 'missing_author', 'Task author is missing');
+        }
+        if (empty($record['responsible_id'])) {
+            $issues[] = $this->issue('tasks', (string) $record['id'], 'missing_responsible', 'Task responsible is missing');
+        }
+        if (!empty($record['deadline']) && !strtotime((string) $record['deadline'])) {
+            $issues[] = $this->issue('tasks', (string) $record['id'], 'invalid_deadline', 'Task deadline is invalid');
+        }
+
+        return $issues;
+    }
+
+    /** @return array<int, IntegrityIssue> */
+    private function checkDeals(array $record): array
+    {
+        $issues = [];
+        if (empty($record['company_id']) && empty($record['contact_id'])) {
+            $issues[] = $this->issue('crm_deals', (string) $record['id'], 'missing_relation', 'Deal has no company/contact link');
+        }
+        if (empty($record['stage_id'])) {
+            $issues[] = $this->issue('crm_deals', (string) $record['id'], 'missing_stage', 'Deal stage is absent');
+        }
+        if (empty($record['assigned_by_id'])) {
+            $issues[] = $this->issue('crm_deals', (string) $record['id'], 'missing_responsible', 'Deal responsible is absent');
+        }
+
+        return $issues;
+    }
+
+    /** @return array<int, IntegrityIssue> */
+    private function checkComments(array $record): array
+    {
+        if (!empty($record['entity_type']) && !empty($record['entity_id'])) {
+            return [];
+        }
+
+        return [$this->issue('comments', (string) $record['id'], 'orphan_comment', 'Comment is not linked to entity')];
+    }
+
+    /** @return array<int, IntegrityIssue> */
+    private function checkFiles(array $record): array
+    {
+        $issues = [];
+        if (empty($record['url'])) {
+            $issues[] = $this->issue('files', (string) $record['id'], 'missing_link', 'File url is absent');
+        }
+        if (isset($record['size']) && (int) $record['size'] <= 0) {
+            $issues[] = $this->issue('files', (string) $record['id'], 'invalid_size', 'File size should be greater than zero');
+        }
+
+        return $issues;
+    }
+
+    private function issue(string $entityType, string $entityId, string $problemType, string $description): IntegrityIssue
+    {
+        return new IntegrityIssue($entityType, $entityId, $problemType, $description, new DateTimeImmutable());
     }
 }

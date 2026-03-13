@@ -4,45 +4,48 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Logging;
 
-use MigrationModule\Application\I18n\BackendMessageTranslator;
+use DateTimeImmutable;
 use MigrationModule\Domain\Log\LogRecord;
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
+use MigrationModule\Infrastructure\Persistence\Log\MigrationLogRepositoryInterface;
 
 final class MigrationLogger
 {
-    private BackendMessageTranslator $translator;
-
-    public function __construct(?BackendMessageTranslator $translator = null)
+    /** @param array<int, MigrationLogRepositoryInterface> $repositories */
+    public function __construct(private readonly array $repositories)
     {
-        $this->translator = $translator ?? new BackendMessageTranslator();
+    }
+
+    public function info(string $operation, string $entityType, ?string $entityId, string $message): void
+    {
+        $this->write($operation, $entityType, $entityId, 'INFO', $message);
+    }
+
+    public function warning(string $operation, string $entityType, ?string $entityId, string $message): void
+    {
+        $this->write($operation, $entityType, $entityId, 'WARNING', $message);
+    }
+
+    public function error(string $operation, string $entityType, ?string $entityId, string $message): void
+    {
+        $this->write($operation, $entityType, $entityId, 'ERROR', $message);
     }
 
     public function log(LogRecord $record): void
     {
+        foreach ($this->repositories as $repository) {
+            $repository->save($record);
+        }
     }
 
-    public function log(string $jobId, LogRecord $record, string $channel = 'technical'): void
+    private function write(string $operation, string $entityType, ?string $entityId, string $status, string $message): void
     {
-        $row = [
-            'job_id' => $jobId,
-            'timestamp' => (new \DateTimeImmutable())->format(DATE_ATOM),
-            'level' => $record->level,
-            'channel' => $channel,
-            'entity_type' => $record->entityType,
-            'entity_id' => $record->oldId,
-            'message' => $record->action,
-            'new_id' => $record->newId,
-            'error' => $record->error,
-            'retry_count' => $record->retryCount,
-            'duration_ms' => $record->durationMs,
-        ];
-
-        $this->repository->appendLog($row);
-        error_log('[migration:' . $jobId . '] ' . $record->level . ' ' . $record->action);
-    }
-
-    public function localizeMessageCode(string $messageCode, string $locale = 'en'): string
-    {
-        return $this->translator->translate($messageCode, $locale);
+        $this->log(new LogRecord(
+            timestamp: new DateTimeImmutable(),
+            operation: $operation,
+            entityType: $entityType,
+            entityId: $entityId,
+            status: $status,
+            message: $message,
+        ));
     }
 }

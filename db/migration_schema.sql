@@ -108,3 +108,41 @@ CREATE TABLE IF NOT EXISTS migration_diff (
     KEY idx_diff_entity (entity_type, source_id),
     CONSTRAINT fk_diff_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_logs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    timestamp DATETIME NOT NULL,
+    operation VARCHAR(128) NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id VARCHAR(128) NULL,
+    status VARCHAR(16) NOT NULL,
+    message TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_migration_logs_status_date (status, timestamp),
+    KEY idx_migration_logs_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_integrity_issues (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id VARCHAR(128) NOT NULL,
+    problem_type VARCHAR(64) NOT NULL,
+    description TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_integrity_entity (entity_type, entity_id),
+    KEY idx_integrity_problem (problem_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_state (
+    entity_type VARCHAR(64) NOT NULL,
+    last_processed_id VARCHAR(128) NOT NULL,
+    last_sync_time DATETIME NOT NULL,
+    records_processed BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    status ENUM('pending', 'running', 'paused', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (entity_type),
+    KEY idx_migration_state_status (status, last_sync_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

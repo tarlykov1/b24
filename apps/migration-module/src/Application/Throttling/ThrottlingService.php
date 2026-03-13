@@ -6,26 +6,23 @@ namespace MigrationModule\Application\Throttling;
 
 final class ThrottlingService
 {
-    private int $requestsInWindow = 0;
-    private int $windowStartedAt;
-    private int $rpm;
+    private int $rpm = 60;
+    private int $lastRequestAt = 0;
 
-    public function __construct(int $rpm = 60)
+    public function currentRpm(): int
     {
-        $this->rpm = $rpm;
-        $this->windowStartedAt = time();
+        return $this->rpm;
     }
 
-    /** @return array{batch_size:int, workers:int, rpm:int, file_parallelism:int, sleep_ms:int} */
-    public function currentLimits(): array
+    public function throttle(): void
     {
-        return [
-            'batch_size' => 100,
-            'workers' => 1,
-            'rpm' => $this->rpm,
-            'file_parallelism' => 1,
-            'sleep_ms' => 500,
-        ];
+        $intervalMs = (int) floor(60000 / max(1, $this->rpm));
+        $elapsedMs = (int) floor((microtime(true) * 1000) - $this->lastRequestAt);
+        if ($this->lastRequestAt > 0 && $elapsedMs < $intervalMs) {
+            usleep(($intervalMs - $elapsedMs) * 1000);
+        }
+
+        $this->lastRequestAt = (int) floor(microtime(true) * 1000);
     }
 
     public function allowRequest(): bool
