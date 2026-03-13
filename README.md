@@ -148,3 +148,19 @@
 - UI-обновление админки: отдельные блоки для dry-run, плана, прогресса, reconciliation, конфликтов и скачивания отчётов.
 
 Подробные инструкции оператора — `docs/operator-guide.md`.
+
+## Этап 8: cutover, rollback, hardening и production-ready запуск
+
+Реализованы производственные блоки:
+- `CutoverService` — боевой сценарий с freeze/fallback, финальной delta-sync, финальной сверкой, двойным подтверждением и переводом `migration_status=COMPLETED`.
+- `RollbackService` — безопасный (`safe`) и полный (`full`) rollback с идемпотентной очисткой mapping/checkpoints и генерацией `reports/rollback_report.json`.
+- `CheckpointService` — сохранение `migration_state.json` по N объектов или M секунд.
+- `ProductionConfigService` — загрузка `migration.config.yml` с профилями `safe`, `balanced` (default), `aggressive`.
+- `ResilientApiExecutor` — retry/backoff, timeout-защита, обработка 429/500/network/partial-response, circuit breaker и runtime-метрики.
+- `MonitoringDashboardService` — сводный dashboard по прогрессу, очереди, latency/errors/retries/ETA.
+- `SecurityService` — шифрование токенов, masking токенов в логах, защита production-запуска и обязательное подтверждение cutover.
+- `ProductionReadinessChecklistService` — блокирующий pre-run checklist.
+- `FinalReportService` — генерация `final_migration_report.json` с итоговыми сущностями, ошибками/предупреждениями/конфликтами, метриками и длительностью.
+- `bin/migration-module` — CLI-команды: `migration start|pause|resume|status|verify|dry-run|delta-sync|cutover|rollback|report`.
+
+Подробный production runbook: `docs/production-migration-guide.md`.
