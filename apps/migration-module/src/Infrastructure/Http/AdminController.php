@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace MigrationModule\Infrastructure\Http;
 
+use MigrationModule\Application\Assistant\MigrationAssistantService;
 use MigrationModule\Infrastructure\Persistence\Log\MigrationLogRepositoryInterface;
 
 final class AdminController
 {
-    public function __construct(private readonly MigrationLogRepositoryInterface $logRepository)
-    {
+    public function __construct(
+        private readonly MigrationLogRepositoryInterface $logRepository,
+        private readonly ?MigrationAssistantService $assistant = null,
+    ) {
     }
 
     /** @param array{status?:string,entity_type?:string,date_from?:string,date_to?:string} $filters
@@ -29,6 +32,22 @@ final class AdminController
             'supports_rerun' => true,
             'exports' => ['json', 'csv', 'html'],
         ];
+    }
+
+
+    /** @param array<string,mixed> $snapshot @param array<int,array<string,mixed>> $history
+     * @return array<string,mixed>
+     */
+    public function migrationAssistant(array $snapshot, array $history = []): array
+    {
+        if ($this->assistant === null) {
+            return [
+                'status' => 'disabled',
+                'message' => 'Migration Assistant не инициализирован.',
+            ];
+        }
+
+        return $this->assistant->assess($snapshot, $history, 'guided');
     }
 
     public function index(): string
