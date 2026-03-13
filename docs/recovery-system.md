@@ -1,137 +1,224 @@
-# Recovery System для миграции Bitrix24
+# Self-Healing Migration Engine
 
 ## Назначение
-Recovery System автоматически обрабатывает ошибки из `audit/error_registry`, выполняет безопасные исправления и позволяет продолжать миграцию без ручного перебора проблем.
+Self-healing engine расширяет migration pipeline: ошибки не просто логируются, а классифицируются, автоматически исправляются безопасными стратегиями и повторно исполняются, пока это безопасно.
 
-Основной pipeline:
-1. Чтение ошибок из Error Registry.
-2. Классификация ошибки.
-3. Подбор стратегии восстановления.
-4. Выполнение восстановления (с retry и throttling).
-5. Запись результата в очередь, историю и статус ошибки.
+Pipeline:
+1. Error ingestion (runtime + audit + reconciliation).
+2. Error taxonomy classification.
+3. Strategy selection с учетом healing policy (`conservative|standard|aggressive`).
+4. Safe sanitizer + dependency/mapping/duplicate/file healing.
+5. Retry orchestration (backoff, jitter, cooldown, circuit breaker, retry queue, dead-letter, quarantine).
+6. Reconciliation-driven repair cycle.
+7. Audit + observability.
 
-Поддерживаемые статусы операций восстановления:
-- `pending`
-- `processing`
-- `resolved`
-- `failed`
-- `skipped`
+## 1) Error taxonomy
+Для каждой категории задаются:
+- `code`
+- `category`
+- `severity`
+- `retryable`
+- `healing_strategy`
+- `escalation_policy`
+- `max_attempts`
 
-## Типы ошибок и стратегии
-Поддерживаются типы:
-- `missing_user`
-- `missing_relation`
-- `missing_task`
-- `missing_comment`
-- `missing_group`
-- `duplicate_id`
-- `data_conflict`
-- `migration_interrupted`
+Поддерживаемые категории:
+- network errors
+- timeout
+- rate limit
+- temporary API failure
+- validation error
+- missing dependency
+- missing user
+- missing field
+- missing stage
+- missing enum value
+- duplicate / conflict
+- file transfer error
+- permission error
+- payload too large
+- unsupported entity shape
+- data corruption / malformed data
+- reconciliation mismatch
+- mapping error
 
-Дополнительно учитываются алиасы аудита:
-- `missing_entity:user` → `missing_user`
-- `missing_entity:task` → `missing_task`
-- `missing_entity:comment` → `missing_comment`
-- `missing_entity:group` → `missing_group`
-- `field_mismatch` → `data_conflict`
+## 2) Healing strategies
+Движок поддерживает безопасные стратегии:
+- retry with backoff
+- retry with reduced concurrency
+- recreate dependency
+- refresh metadata
+- auto-create missing enum/stage/field where allowed
+- remap user to fallback account
+- split payload
+- trim oversize value
+- sanitize invalid value
+- skip optional field
+- postpone entity to later phase
+- move entity to quarantine
+- downgrade bulk -> single-item
+- re-read source / re-read target
+- recalculate mapping
+- rebuild relation references
 
-### Missing User
-Recovery проверяет пользователя на старом портале:
-- если найден и активен — переносит в target;
-- если неактивен — применяет policy:
-  - `create_user`
-  - `create_deactivated_user`
-  - `assign_system_user`
+## 3) Retry orchestration
+Оркестратор:
+- exponential backoff + jitter;
+- max attempts per error class;
+- cooldown after mass failures;
+- circuit breaker;
+- automatic load reduction;
+- postponed items reprocessing;
+- dedicated retry queue;
+- dead-letter queue;
+- quarantine queue.
 
-### Missing Task
-Recovery:
-- проверяет задачу на source;
-- повторно переносит задачу;
-- восстанавливает связи (`responsible`, `creator`, `group`, `comments`, `subtasks`*);
-- переносит только отсутствующие комментарии без дубликатов.
+## 4) Dependency auto-healing
+Если ошибка из-за отсутствующей зависимости, engine делает:
+1. Проверку фактического отсутствия;
+2. Дозагрузку/создание зависимости (по policy);
+3. Восстановление mapping, если зависимость уже есть;
+4. Повтор исходной сущности.
 
-> 
-> `subtasks` помечены как расширение на стороне реального адаптера Bitrix API, в каркасе заложена точка расширения.
+Покрытие:
+- missing responsible user;
+- missing stage;
+- missing enum value;
+- missing related contact/company;
+- missing pipeline;
+- missing custom field.
 
-### Missing Comment
-Recovery:
-- находит parent task;
-- загружает комментарий с source;
-- добавляет комментарий только если его ещё нет на target.
+## 5) Safe Data Sanitizer
+Слой нормализации:
+- trim строк;
+- удаление недопустимых символов;
+- email/phone normalization;
+- boolean normalization;
+- null-safe handling;
+- empty arrays handling;
+- trim oversize values;
+- timezone normalization;
+- money normalization;
+- complex structure serialization;
+- broken attachment links cleanup.
 
-### Missing Relation
-Recovery:
-- валидирует связанные сущности;
-- если сущность есть — восстанавливает reference;
-- если нет — применяет fallback:
-  - system user;
-  - placeholder group;
-  - пустое поле (для разрешённых полей).
+Принцип: сохранить максимум данных, не терять молча.
 
-### Duplicate ID
-Recovery:
-1. сравнивает payload source/target;
-2. если эквивалентны — использует существующий объект;
-3. если конфликтуют — создаёт новый объект и пишет mapping `old_id -> new_id`.
+## 6) Mapping healing
+При mapping errors:
+- metadata refresh;
+- mapping re-check;
+- alternate mapping;
+- confidence recalculation;
+- fallback rule;
+- retry after schema refresh;
+- quarantine/manual attention, если безопасного решения нет.
 
-Mapping хранится в `IdConflictResolver` и используется в relation recovery.
+## 7) Duplicate/conflict healing
+Стратегии:
+- exact match -> reuse target entity;
+- safe merge -> update existing;
+- ambiguous duplicate -> quarantine/manual review;
+- ID conflict -> preserve old ID если возможно, иначе новый ID + mapping update.
 
-### Data Conflict
-Небезопасные/двусмысленные конфликты помечаются как `skipped` для ручной проверки.
+## 8) File healing
+Для файлов:
+- re-download;
+- re-upload;
+- checksum verification;
+- metadata/content split handling;
+- skip irrecoverable broken file with explicit log;
+- dedicated file retry queue;
+- separate file recovery pass.
 
-### Migration Interrupted
-Запись в `resolved` с фиксацией resume-checkpoint.
+## 9) Reconciliation-driven healing
+После основного прохода reconciliation выявляет:
+- непренесенные сущности;
+- partially migrated;
+- key field mismatch;
+- relation losses;
+- stage/assignee/file/comment mismatch.
 
-## Recovery Queue
-Структура операции очереди:
-- `type`
-- `entity`
-- `entity_id`
-- `priority`
-- `retry_count`
-- `created_at`
+Далее:
+- auto repair jobs;
+- repair rerun;
+- mapping updates;
+- relation fixing;
+- missing entities load;
+- residual issue list для ручного разбора.
 
-Дополнительно сохраняются `status`, `updated_at`, `last_error`, `max_retries`.
+## 10) Quarantine + manual review
+Quarantine item хранит:
+- reason;
+- attempted strategies;
+- recommended next step;
+- safe-to-retry flag;
+- manual override eligibility.
 
-Очередь:
-- выполняет операции пакетами (`batch_size`, по умолчанию 20);
-- сортирует по priority;
-- между пакетами выдерживает задержку (`delay_ms`, по умолчанию 500ms), чтобы не перегружать source-портал.
+UI manual review screen:
+- filters by error type;
+- recommendations;
+- Retry;
+- Apply Suggested Fix;
+- Ignore;
+- Export Error Report.
 
-## Retry Migration
-`EntityRetryService`:
-- переводит неуспешные операции обратно в `pending`;
-- ограничивает число повторов (`retry_limit`, по умолчанию 3);
-- после превышения лимита оставляет `failed`.
+## 11) Observability и audit
+Каждое healing-действие логируется:
+- исходная ошибка;
+- стратегия;
+- число попыток;
+- успех/неуспех;
+- итоговые изменения;
+- data loss indicator;
+- degraded mode indicator.
 
-Кнопка `Retry Failed` в UI перезапускает только retryable failed операции.
+Healing metrics:
+- auto-fixed count;
+- retried successfully;
+- quarantined;
+- unresolved;
+- healed by category;
+- unsafe-to-heal cases.
 
-## Интеграция с Audit
-- Recovery читает ошибки из `ErrorRegistry::all()`.
-- После обработки обновляет `recovery_status` через `setRecoveryStatus`.
-- В ошибке сохраняется `recovery_history` и `recovery_result`.
-- `MigrationAuditModule` предоставляет API:
-  - `runRecovery(...)`
-  - `retryFailedRecovery(...)`
-  - `ignoreError(errorId, reason)`
+## 12) Safety policies
+- `conservative`: минимум auto-create, больше quarantine.
+- `standard`: auto-create для безопасных enum/stage/lookup.
+- `aggressive`: максимально лечит безопасными обратимыми шагами.
 
-## Ручной запуск Recovery
-Через UI:
-1. Выполнить `Run Audit`.
-2. Открыть вкладку `Recovery`.
-3. Нажать `Run Recovery`.
-4. При необходимости нажать `Retry Failed`.
-5. Для non-actionable ошибки использовать `Ignore Error`.
+Запрещено без явной policy:
+- risky duplicate merge;
+- data deletion;
+- overwrite ambiguous entities;
+- relation destruction;
+- blind custom field creation.
 
-## Анализ ошибок
-Рекомендуемый порядок:
-1. Сортировать по `recovery_status`.
-2. Проверять `failed` с `last_error`.
-3. Сверять `mapping` при `duplicate_id`.
-4. Для `skipped` проводить ручной change-review.
+## 13) Learning in reruns
+Self-healing учитывает историю:
+- error history;
+- successful strategy reuse;
+- skipping useless retries;
+- manual override persistence;
+- reuse of migration knowledge in next incremental runs.
 
-## Безопасность
-- Recovery не выполняет опасные деструктивные операции автоматически.
-- Все изменения логируются (`history`, queue status transitions, `error_registry` history).
-- История восстановления сохраняется в памяти каркаса и включается в `finalizeMigration()`.
-- Для потенциально рискованных конфликтов применяется `skipped` + manual review.
+## 14) Test matrix
+Покрыты сценарии:
+- API timeout;
+- 429;
+- missing stage;
+- missing enum;
+- missing user;
+- duplicate;
+- invalid payload;
+- broken attachment;
+- partial write;
+- lost mapping;
+- restart after crash;
+- reconciliation mismatch.
+
+## 15) Ограничения
+Self-healing:
+- не скрывает ошибок;
+- не теряет данные молча;
+- не делает небезопасные действия автоматически;
+- отправляет неразрешимые случаи в quarantine/manual review.

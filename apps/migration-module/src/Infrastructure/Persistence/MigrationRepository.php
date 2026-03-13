@@ -29,11 +29,23 @@ final class MigrationRepository
     /** @var array<string, string> */
     private array $syncCheckpoints = [];
 
-    /** @var array<string, array<int, array<string,mixed>>> */
-    private array $autoMappingConfigs = [];
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $healingAuditLog = [];
 
-    /** @var array<string, array<string,string>> */
-    private array $historicalFieldMappings = [];
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $quarantine = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $retryQueue = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $deadLetterQueue = [];
+
+    /** @var array<string,array<string,int>> */
+    private array $healingAttempts = [];
+
+    /** @var array<string,array<string,mixed>> */
+    private array $manualOverrides = [];
 
     public function beginJob(string $mode): string
     {
@@ -260,36 +272,72 @@ final class MigrationRepository
         $this->checkpoints[$jobId] = [];
     }
 
-    /** @param array<string,mixed> $config */
-    public function saveAutoMappingConfig(string $jobId, array $config): int
+    /** @param array<string,mixed> $record */
+    public function appendHealingAuditLog(string $jobId, array $record): void
     {
-        $history = $this->autoMappingConfigs[$jobId] ?? [];
-        $version = count($history) + 1;
-
-        $this->autoMappingConfigs[$jobId][] = [
-            'version' => $version,
-            'created_at' => (new DateTimeImmutable())->format(DATE_ATOM),
-            'origin' => 'auto_generated',
-            'config' => $config,
-        ];
-
-        return $version;
+        $this->healingAuditLog[$jobId][] = $record;
     }
 
     /** @return array<int,array<string,mixed>> */
-    public function autoMappingHistory(string $jobId): array
+    public function healingAuditLog(string $jobId): array
     {
-        return $this->autoMappingConfigs[$jobId] ?? [];
+        return $this->healingAuditLog[$jobId] ?? [];
     }
 
-    public function rememberHistoricalFieldMapping(string $entityType, string $sourceField, string $targetField): void
+    /** @param array<string,mixed> $item */
+    public function addQuarantineItem(string $jobId, array $item): void
     {
-        $this->historicalFieldMappings[$entityType][$sourceField] = $targetField;
+        $this->quarantine[$jobId][] = $item;
     }
 
-    public function findHistoricalFieldMapping(string $sourceField, string $entityType): ?string
+    /** @return array<int,array<string,mixed>> */
+    public function quarantineItems(string $jobId): array
     {
-        return $this->historicalFieldMappings[$entityType][$sourceField] ?? null;
+        return $this->quarantine[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $item */
+    public function addRetryItem(string $jobId, array $item): void
+    {
+        $this->retryQueue[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function retryItems(string $jobId): array
+    {
+        return $this->retryQueue[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $item */
+    public function addDeadLetterItem(string $jobId, array $item): void
+    {
+        $this->deadLetterQueue[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function deadLetterItems(string $jobId): array
+    {
+        return $this->deadLetterQueue[$jobId] ?? [];
+    }
+
+    public function incrementHealingAttempt(string $jobId, string $categoryKey, string $entityId): int
+    {
+        $key = sprintf('%s:%s', $categoryKey, $entityId);
+        $this->healingAttempts[$jobId][$key] = ($this->healingAttempts[$jobId][$key] ?? 0) + 1;
+
+        return $this->healingAttempts[$jobId][$key];
+    }
+
+    /** @param array<string,mixed> $override */
+    public function saveManualOverride(string $jobId, string $overrideKey, array $override): void
+    {
+        $this->manualOverrides[$jobId . ':' . $overrideKey] = $override;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function manualOverride(string $jobId, string $overrideKey): ?array
+    {
+        return $this->manualOverrides[$jobId . ':' . $overrideKey] ?? null;
     }
 
 }

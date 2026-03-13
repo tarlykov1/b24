@@ -10,12 +10,17 @@ use MigrationModule\Application\Logging\MigrationLogger;
 use MigrationModule\Application\Mapping\IdMappingService;
 use MigrationModule\Application\Mapping\IntegrityCheckService;
 use MigrationModule\Application\Queue\QueueService;
+use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
+use MigrationModule\Application\SelfHealing\HealingAuditLogService;
+use MigrationModule\Application\SelfHealing\RepairCycleService;
+use MigrationModule\Application\SelfHealing\SelfHealingEngine;
 use MigrationModule\Application\State\JobStateService;
 use MigrationModule\Application\Throttling\ThrottlingService;
 use MigrationModule\Domain\Config\InactiveUserPolicy;
 use MigrationModule\Domain\Config\JobSettings;
 use MigrationModule\Domain\Config\RunMode;
 use MigrationModule\Domain\Log\LogRecord;
+use MigrationModule\Domain\SelfHealing\HealingPolicy;
 
 final class MigrationRunner
 {
@@ -28,6 +33,10 @@ final class MigrationRunner
         private readonly IdMappingService $mapping,
         private readonly IntegrityCheckService $integrity,
         private readonly DiffAnalysisService $diff,
+        private readonly SelfHealingEngine $healing,
+        private readonly HealingAuditLogService $healingAudit,
+        private readonly PostMigrationReconciliationService $reconciliation,
+        private readonly RepairCycleService $repairCycle,
     ) {
     }
 
@@ -45,6 +54,8 @@ final class MigrationRunner
 
         $this->control->start($jobId);
         $processed = 0;
+        $healingPolicy = HealingPolicy::STANDARD;
+        $entityIndex = [];
 
         foreach (array_chunk($source, $settings->batchSize) as $batchNumber => $batch) {
             $batchStart = microtime(true);
@@ -53,6 +64,9 @@ final class MigrationRunner
                     $this->logger->log($jobId, new LogRecord('info', (string) $entity['type'], (string) $entity['id'], null, 'entity_skipped_by_cutoff', null, 0, 0), 'journal');
                     continue;
                 }
+
+                $entity = $this->healing->healEntity($jobId, $entity, (array) ($entity['errors'] ?? []), $healingPolicy)['entity'];
+                $entityIndex[(string) $entity['type'] . ':' . (string) $entity['id']] = $entity;
 
                 $result = $this->mapping->map($jobId, (string) $entity['type'], (string) $entity['id'], static fn (string $desiredId): bool => $desiredId !== 'conflict');
                 $this->queue->enqueue($jobId, new \MigrationModule\Domain\Queue\QueueItem((string) $entity['type'], 'upsert', (string) $entity['type'] . ':' . (string) $entity['id'], $entity));
@@ -73,10 +87,31 @@ final class MigrationRunner
             $this->throttling->pauseBetweenBatches();
         }
 
+        $reconciliation = $this->reconciliation->reconcile($jobId, $this->packByType($source), $this->packByType($target));
+        $repair = $this->repairCycle->run($jobId, $reconciliation, $entityIndex, $healingPolicy);
+
         $this->control->softStop($jobId);
         $this->logger->log($jobId, new LogRecord('info', 'job', $jobId, null, 'job_stopped_after_batches', null, 0, 0), 'journal');
 
-        return ['processed' => $processed, 'metrics' => $this->state->metrics($jobId)];
+        return [
+            'processed' => $processed,
+            'metrics' => $this->state->metrics($jobId),
+            'healing_audit' => $this->healingAudit->stats($jobId),
+            'reconciliation' => $reconciliation,
+            'repair_cycle' => $repair,
+        ];
+    }
+
+    /** @param array<int,array<string,mixed>> $flat @return array<string,array<int,array<string,mixed>>> */
+    private function packByType(array $flat): array
+    {
+        $grouped = [];
+        foreach ($flat as $item) {
+            $type = (string) ($item['type'] ?? 'unknown');
+            $grouped[$type . 's'][] = $item;
+        }
+
+        return $grouped;
     }
 
     /** @param array<string,mixed> $entity */
