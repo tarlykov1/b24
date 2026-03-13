@@ -166,12 +166,13 @@
 Подробный production runbook: `docs/production-migration-guide.md`.
 
 
-## Этап 9: Reconciliation Engine и Migration Certification
+## Этап 9: локальный Migration Assistant (без внешнего AI)
 
-Реализованы блоки финальной сверки и сертификации миграции:
-- `ReconciliationEngineService` — многоуровневая асинхронно-батчевая сверка source/target с adaptive sampling, проверкой mapping, ключевых полей, связей, стадий, файлов и timeline-сущностей.
-- `CertificationReportService` — генерация Certification Report в `JSON/HTML/PDF` с итоговым Certification Score и рекомендациями.
-- Автоформирование repair jobs по аномалиям и запуск цикла `reconciliation → repair → reconciliation`.
-- UI-раздел `Migration Verification` с KPI по verified/warning/critical и графиками coverage/integrity/error distribution.
+Добавлен интеллектуальный помощник миграции, рассчитанный на работу в air-gapped инфраструктуре:
+- `MigrationAssistantService` с explainable рекомендациями по pre-flight, плану фаз, нагрузке, mapping/healing/verification;
+- rule-based knowledge base (`apps/migration-module/config/assistant/rule-pack.json`);
+- deterministic fallback по умолчанию без внешних API;
+- опциональные флаги локального ML и локальной LLM без критической зависимости;
+- UI-блок `Migration Assistant` с `Why this recommendation` и operator checklist.
 
-Подробности: `docs/reconciliation-certification.md`.
+Подробно: `docs/migration-assistant.md`.

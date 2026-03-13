@@ -1,0 +1,47 @@
+{
+  "thresholds": {
+    "high_file_volume": 50000,
+    "high_custom_fields": 150,
+    "high_relation_density": 0.65,
+    "high_unresolved_conflicts": 20,
+    "high_inactive_users": 100,
+    "max_safe_workers": 4,
+    "max_balanced_workers": 8,
+    "max_aggressive_workers": 16,
+    "max_safe_batch": 50,
+    "max_balanced_batch": 120,
+    "max_aggressive_batch": 250
+  },
+  "risk_weights": {
+    "source_unavailable": 45,
+    "target_unavailable": 45,
+    "custom_fields": 15,
+    "files": 20,
+    "relation_density": 15,
+    "mapping_coverage": 25,
+    "stage_mapping_coverage": 20,
+    "unresolved_conflicts": 20,
+    "id_conflict_risk": 10,
+    "heavy_endpoints": 10
+  },
+  "phase_template": [
+    "users",
+    "reference_data_and_custom_fields",
+    "pipelines_and_stages",
+    "companies_and_contacts",
+    "leads_and_deals",
+    "smart_processes",
+    "activities_and_comments",
+    "files",
+    "incremental_sync",
+    "reconciliation",
+    "certification_report"
+  ],
+  "remediation_templates": {
+    "mapping_low": "Заполните mapping перед запуском и выполните выборочную проверку сэмплов.",
+    "files_heavy": "Вынесите файлы в отдельную фазу и включите пониженный профиль нагрузки для file endpoints.",
+    "inactive_users": "Выберите стратегию для inactive users: remap, shadow account или quarantine.",
+    "stage_mapping_low": "Создайте недостающие стадии и выполните ручную проверку ambiguous mapping.",
+    "retry_storm": "Переведите healing policy в conservative, зафиксируйте схему и повторите retry волнами."
+  }
+}

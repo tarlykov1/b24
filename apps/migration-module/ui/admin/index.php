@@ -120,6 +120,25 @@ declare(strict_types=1);
     <div class="panel"><h2>Конфликты</h2><pre id="conflicts-report">[]</pre></div>
 </div>
 
+
+<div class="panel">
+    <h2>Migration Assistant</h2>
+    <div class="grid">
+        <div>
+            <p><b>Overall readiness score:</b> <span id="assistant-readiness">-</span></p>
+            <p><b>Recommended load profile:</b> <span id="assistant-load">-</span></p>
+            <p><b>Next best action:</b> <span id="assistant-next">-</span></p>
+        </div>
+        <div>
+            <h3>Why this recommendation</h3>
+            <pre id="assistant-why">{}</pre>
+        </div>
+    </div>
+    <h3>Operator checklist</h3>
+    <pre id="assistant-checklist">[]</pre>
+    <button id="assistant-run-btn">Run assistant analysis</button>
+</div>
+
 <div class="panel">
     <h2>Скачать отчеты</h2>
     <ul>
@@ -260,6 +279,48 @@ document.getElementById('export-map-btn').addEventListener('click', () => {
     a.click();
     URL.revokeObjectURL(url);
 });
+
+
+const runAssistant = () => {
+    const snapshot = {
+        source_available: true,
+        target_available: true,
+        custom_fields_count: 175,
+        files_count: 72000,
+        relation_density: 0.69,
+        mapping_coverage: 0.86,
+        stage_mapping_coverage: 0.88,
+        unresolved_conflicts: 26,
+    };
+
+    const risk = (snapshot.files_count > 50000 ? 20 : 0)
+        + (snapshot.mapping_coverage < 0.9 ? 25 : 0)
+        + (snapshot.stage_mapping_coverage < 0.95 ? 20 : 0)
+        + (snapshot.unresolved_conflicts > 20 ? 20 : 0);
+    const readiness = Math.max(0, 100 - risk);
+    const load = risk >= 70 ? 'safe' : risk >= 40 ? 'balanced' : 'aggressive';
+
+    const checklist = [
+        'Запустить dry-run с приоритетом на mapping conflicts',
+        'Проверить stage mapping и ambiguous enum values',
+        'Вынести файлы в отдельную фазу',
+        'Подтвердить conservative healing policy для первого прохода'
+    ];
+
+    document.getElementById('assistant-readiness').textContent = readiness;
+    document.getElementById('assistant-load').textContent = load;
+    document.getElementById('assistant-next').textContent = 'Сначала dry-run, затем guided full migration';
+    document.getElementById('assistant-checklist').textContent = JSON.stringify(checklist, null, 2);
+    document.getElementById('assistant-why').textContent = JSON.stringify({
+        input_factors: snapshot,
+        rule: 'high files + low mapping coverage => isolate file phase + safe start',
+        expected_effect: 'lower source pressure and fewer quarantine entities',
+        risk_if_ignored: '429/timeout spikes and unstable reruns'
+    }, null, 2);
+};
+
+document.getElementById('assistant-run-btn').addEventListener('click', runAssistant);
+
 </script>
 </body>
 </html>
