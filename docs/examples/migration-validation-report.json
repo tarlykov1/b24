@@ -1,0 +1,42 @@
+{
+  "migration_summary": {
+    "started_at": "2026-03-12T10:00:00+00:00",
+    "ended_at": "2026-03-12T10:15:00+00:00",
+    "mode": "sync"
+  },
+  "statistics": {
+    "processed": 1200,
+    "created": 240,
+    "updated": 940,
+    "skipped": 20,
+    "errors": 2
+  },
+  "integrity_check": {
+    "result": "warning",
+    "problems": [
+      {
+        "type": "comment",
+        "old_id": "9001",
+        "new_id": "9050",
+        "missing_reference": "author:445"
+      }
+    ]
+  },
+  "statistics_comparison": {
+    "status": "warning",
+    "rows": [
+      {
+        "entity": "tasks",
+        "source_portal": 500,
+        "destination_portal": 498,
+        "difference": -2,
+        "severity": "warning"
+      }
+    ]
+  },
+  "performance": {
+    "average_batch_time_ms": 135.2,
+    "api_requests": 760,
+    "retry_count": 14
+  }
+}
