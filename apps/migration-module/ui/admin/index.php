@@ -49,6 +49,30 @@ declare(strict_types=1);
     <pre id="migration-plan">[]</pre>
 </div>
 
+<div class="panel">
+    <h2>Автокарта CRM-структуры</h2>
+    <p>Автосканирование source/target, confidence, трансформации, конфликтные случаи и ручная корректировка.</p>
+    <div class="actions">
+        <button id="build-auto-map-btn">Build auto-map</button>
+        <button id="export-map-btn">Export mapping config</button>
+    </div>
+    <div class="map-grid">
+        <div>
+            <table>
+                <thead><tr><th>Source field</th><th>Target field</th><th>Types</th><th>Confidence</th><th>Rule</th><th>Status</th></tr></thead>
+                <tbody id="field-mapping-table"></tbody>
+            </table>
+            <p class="small">Ambiguous cases автоматически уходят в needs review. Missing stages отмечаются как needs creation.</p>
+        </div>
+        <div>
+            <h3>Explainability и риски</h3>
+            <pre id="auto-map-explain">{}</pre>
+            <h3>Stage/Enum coverage</h3>
+            <pre id="auto-map-coverage">{}</pre>
+        </div>
+    </div>
+</div>
+
 <div class="grid">
     <div class="panel">
         <h2>Ход миграции</h2>
@@ -118,6 +142,34 @@ const source = {
     files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}],
 };
 const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [{id: '10', responsible_id: '1', created_by: '1'}], deals: [{id: '77', title: 'Deal', stage_id: 'IN_PROGRESS', amount: 1200, company_id: '15'}], files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}] };
+
+const mockAutoMap = {
+  version: 1,
+  field_mappings: [
+    {entity: 'crm_deals', source_field: 'PHONE', target_field: 'PHONE', source_type: 'string', target_type: 'string', confidence: 'high', score: 97, transformation_rule: 'none', status: 'auto', explain: 'Matched by exact_system_code, type_match'},
+    {entity: 'crm_deals', source_field: 'UF_CRM_REGION', target_field: 'UF_CRM_REGION_NEW', source_type: 'string', target_type: 'string', confidence: 'medium', score: 64, transformation_rule: 'none', status: 'needs_review', explain: 'Matched by normalized_name + historical mapping'},
+    {entity: 'crm_deals', source_field: 'BUDGET_TEXT', target_field: 'PROJECT_BUDGET', source_type: 'text', target_type: 'string', confidence: 'medium', score: 71, transformation_rule: 'text_to_string_truncate', status: 'needs_review', explain: 'Matched by semantic_match and type conversion'},
+  ],
+  stage_mappings: [
+    {entity: 'crm_deals', source_stage: {name: 'Переговоры'}, target_stage: {name: 'Negotiation'}, confidence: 'medium', score: 68, status: 'needs_review'},
+    {entity: 'crm_deals', source_stage: {name: 'В ожидании оплаты'}, target_stage: null, confidence: 'low', score: 22, status: 'needs_creation'}
+  ],
+  enum_mappings: [
+    {entity: 'crm_deals', field: 'UF_CRM_SOURCE', source_value: 'Партнер', target_value: 'Partner', confidence: 'high', score: 92, status: 'auto'},
+    {entity: 'crm_deals', field: 'UF_CRM_SOURCE', source_value: 'Неизвестно', target_value: 'unknown', confidence: 'low', score: 20, status: 'needs_creation'}
+  ],
+  conflicts: [
+    {type: 'required_field_without_source', message: 'crm_deals.ASSIGNED_BY_ID is required in target but has no source mapping'},
+    {type: 'precision_loss', message: 'crm_deals.BUDGET_TEXT may lose content by truncation'},
+    {type: 'unmapped_stage', message: 'crm_deals.В ожидании оплаты missing in target'}
+  ],
+  summary: {field_coverage_percent: 33, stage_coverage_percent: 0, enum_coverage_percent: 50},
+  dry_run: {
+    errors: ['crm_deals.PROJECT_STAGE unresolved'],
+    warnings: ['crm_deals.BUDGET_TEXT requires manual review'],
+    coverage: {fields_percent: 33, stages_percent: 0, enums_percent: 50}
+  }
+};
 
 const computePlan = () => {
     const items = [];
@@ -196,6 +248,17 @@ document.getElementById('delta-preview-btn').addEventListener('click', () => {
     document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {source_count: 1, target_count: 1, status: 'OK'}, deals: {source_count: 1, target_count: 1, status: 'WARNING'}}, null, 2);
     document.getElementById('conflicts-report').textContent = JSON.stringify([{entity: 'deals', id: '77', issue: 'stage mismatch'}], null, 2);
     renderVerification();
+});
+
+document.getElementById('build-auto-map-btn').addEventListener('click', () => renderAutoMap(mockAutoMap));
+document.getElementById('export-map-btn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(mockAutoMap, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mapping-config.v1.json';
+    a.click();
+    URL.revokeObjectURL(url);
 });
 </script>
 </body>
