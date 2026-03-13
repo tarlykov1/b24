@@ -29,14 +29,11 @@ final class MigrationRepository
     /** @var array<string, string> */
     private array $syncCheckpoints = [];
 
-    /** @var array<string, array<string, array<string, mixed>>> */
-    private array $identityMappings = [];
+    /** @var array<string, array<int, array<string,mixed>>> */
+    private array $autoMappingConfigs = [];
 
-    /** @var array<string, array<string, mixed>> */
-    private array $queueStates = [];
-
-    /** @var array<string, string> */
-    private array $highWaterMarks = [];
+    /** @var array<string, array<string,string>> */
+    private array $historicalFieldMappings = [];
 
     public function beginJob(string $mode): string
     {
@@ -263,35 +260,36 @@ final class MigrationRepository
         $this->checkpoints[$jobId] = [];
     }
 
-    /** @return array{value:string,meta:array<string,mixed>}|null */
-    public function getCheckpoint(string $jobId, string $scope): ?array
+    /** @param array<string,mixed> $config */
+    public function saveAutoMappingConfig(string $jobId, array $config): int
     {
-        $items = $this->checkpoints[$jobId] ?? [];
-        for ($i = count($items) - 1; $i >= 0; --$i) {
-            if (($items[$i]['scope'] ?? null) === $scope) {
-                return [
-                    'value' => (string) ($items[$i]['value'] ?? ''),
-                    'meta' => (array) ($items[$i]['meta'] ?? []),
-                ];
-            }
-        }
+        $history = $this->autoMappingConfigs[$jobId] ?? [];
+        $version = count($history) + 1;
 
-        return null;
+        $this->autoMappingConfigs[$jobId][] = [
+            'version' => $version,
+            'created_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+            'origin' => 'auto_generated',
+            'config' => $config,
+        ];
+
+        return $version;
     }
 
-    /** @return array<string,int|float> */
-    public function metrics(string $jobId): array
+    /** @return array<int,array<string,mixed>> */
+    public function autoMappingHistory(string $jobId): array
     {
-        return $this->jobs[$jobId]['metrics'] ?? [];
+        return $this->autoMappingConfigs[$jobId] ?? [];
     }
 
-    public function incrementMetric(string $jobId, string $metric, int|float $value = 1): void
+    public function rememberHistoricalFieldMapping(string $entityType, string $sourceField, string $targetField): void
     {
-        if (!isset($this->jobs[$jobId]['metrics'][$metric])) {
-            $this->jobs[$jobId]['metrics'][$metric] = 0;
-        }
+        $this->historicalFieldMappings[$entityType][$sourceField] = $targetField;
+    }
 
-        $this->jobs[$jobId]['metrics'][$metric] += $value;
+    public function findHistoricalFieldMapping(string $sourceField, string $entityType): ?string
+    {
+        return $this->historicalFieldMappings[$entityType][$sourceField] ?? null;
     }
 
 }
