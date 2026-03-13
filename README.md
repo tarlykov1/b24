@@ -166,20 +166,12 @@
 Подробный production runbook: `docs/production-migration-guide.md`.
 
 
-## Этап 9: масштабирование для миллионов сущностей
+## Этап 9: Reconciliation Engine и Migration Certification
 
-Реализован большой этап масштабирования и устойчивости:
-- dependency-aware DAG-планировщик этапов (`MigrationStagePlanner`);
-- queue/chunk/batch оркестратор с checkpoint/resume (`ScalableMigrationOrchestrator`);
-- adaptive throttling с раздельными лимитами source/target/heavy и профилями `safe|balanced|aggressive` (`AdaptiveRateLimiter`);
-- high-water mark и incremental sync (`HighWaterMarkSyncService`);
-- identity mapping v2 (метод матчинга, версия, сигнатура, статус последней синхронизации);
-- расширенный monitoring dashboard (throughput, lag, rate-limit hits, memory/worker usage, success ratio, reconciliation coverage);
-- обновлённый runtime config (`migration.config.yml`) для больших нагрузок.
+Реализованы блоки финальной сверки и сертификации миграции:
+- `ReconciliationEngineService` — многоуровневая асинхронно-батчевая сверка source/target с adaptive sampling, проверкой mapping, ключевых полей, связей, стадий, файлов и timeline-сущностей.
+- `CertificationReportService` — генерация Certification Report в `JSON/HTML/PDF` с итоговым Certification Score и рекомендациями.
+- Автоформирование repair jobs по аномалиям и запуск цикла `reconciliation → repair → reconciliation`.
+- UI-раздел `Migration Verification` с KPI по verified/warning/critical и графиками coverage/integrity/error distribution.
 
-Подробная документация: `docs/scalable-migration-architecture.md`.
-
-### Быстрый сценарий запуска
-- **initial full migration**: профиль `safe`, основной прогон `initialRun=true`, затем отдельная фаза файлов.
-- **incremental sync**: прогон `initialRun=false` с high-water mark дозаливкой.
-- **repeat verification**: повторная сверка после incremental sync.
+Подробности: `docs/reconciliation-certification.md`.
