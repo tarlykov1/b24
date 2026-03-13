@@ -6,10 +6,12 @@ namespace MigrationModule\Application\Audit;
 
 final class AuditService
 {
-    /** @return array<string, mixed> */
-    public function collect(): array
+    /** @param array<string,int> $counts */
+    public function collect(array $counts = []): array
     {
-        // TODO: collect entity counts, structures, and integration touchpoints.
-        return [];
+        return [
+            'entity_counts' => $counts,
+            'captured_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+        ];
     }
 }

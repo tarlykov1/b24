@@ -31,11 +31,32 @@ $validation = [
 <div class="panel"><h2>Preflight</h2><p>Status: Ready</p></div>
 <div class="panel"><h2>Audit</h2><p>Inventory: collected</p></div>
 <div class="panel actions">
-    <h2>Job Control</h2>
-    <button>Start</button>
-    <button>Pause</button>
-    <button>Resume</button>
-    <button>Soft Stop</button>
+    <h2 data-i18n="panel.control">Job Control</h2>
+    <button data-i18n="migration.start">Start migration</button>
+    <button data-i18n="migration.pause">Pause</button>
+    <button data-i18n="migration.resume">Resume</button>
+    <button data-i18n="migration.stop">Stop</button>
+</div>
+<div class="panel"><h2 data-i18n="panel.diff">Diff Approval Gate</h2><p><span data-i18n="migration.preview">Preview changes</span>: <span data-i18n="status.todo">TODO</span></p></div>
+<div class="panel"><h2 data-i18n="panel.verification">Validation</h2><p data-i18n="migration.validation">Validation page</p></div>
+<div class="panel">
+    <h2 data-i18n="panel.dashboard">Migration Dashboard</h2>
+    <div class="dashboard-grid">
+        <div class="kpi"><div class="muted" data-i18n="dashboard.processed">Processed records</div><div id="processedCount">0</div></div>
+        <div class="kpi"><div class="muted" data-i18n="dashboard.errors">Errors</div><div id="errorCount">0</div></div>
+        <div class="kpi"><div class="muted" data-i18n="dashboard.lastSync">Last synchronization</div><div id="lastSync">-</div></div>
+    </div>
+</div>
+<div class="panel">
+    <h2 data-i18n="panel.logs">Logs</h2>
+    <p><strong data-i18n="migration.progress">Progress</strong>: <span id="progressValue">0%</span></p>
+    <ul>
+        <li data-message-key="migration.message.MIGRATION_STARTED">MIGRATION_STARTED</li>
+        <li data-message-key="migration.message.MIGRATION_PAUSED">MIGRATION_PAUSED</li>
+        <li data-message-key="migration.message.MIGRATION_COMPLETED">MIGRATION_COMPLETED</li>
+        <li data-i18n="warnings.sample">Warning: rate limit is close</li>
+        <li data-i18n="errors.sample">Error: connection to Bitrix24 API failed</li>
+    </ul>
 </div>
 <div class="panel"><h2>Diff Approval Gate</h2><p>Continue sync / Cancel</p></div>
 <div class="panel">
