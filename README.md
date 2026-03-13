@@ -106,6 +106,21 @@ Provides placeholders for:
 - diff approval gate
 - verification status
 
+## Internationalization (i18n)
+- Locale catalog files are stored in `/locales/en.json` and `/locales/ru.json`.
+- Default locale is English (`en`) when no language was selected.
+- UI language switcher (`RU | EN`) saves current locale to `localStorage` (`migration.locale`).
+- UI elements (menus, buttons, statuses, dashboard labels, warnings/errors) use translation keys from locale JSON files.
+- Backend message keys (`MIGRATION_STARTED`, `MIGRATION_PAUSED`, `MIGRATION_COMPLETED`, etc.) are translated with `MigrationModule\Application\I18n\BackendMessageTranslator`.
+- Dates, time, and numbers are localized through browser `Intl.DateTimeFormat` and `Intl.NumberFormat` according to selected locale.
+
+### Add a new language
+1. Add a new locale file in `/locales`, for example `/locales/de.json`.
+2. Copy all keys from `en.json` and provide translated values.
+3. Register the new locale in `TRANSLATIONS` object inside `apps/migration-module/ui/admin/index.php`.
+4. Add a language button in the UI top bar (`data-lang="de"`) to enable manual switching.
+5. Extend backend dictionary in `BackendMessageTranslator::DICTIONARY` for backend event/error codes.
+
 ## Safety and idempotency strategy
 - enqueue immutable work units with deterministic deduplication keys
 - checkpoint progression only after durable writes

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Preflight;
 
+use MigrationModule\Domain\Config\InactiveUserPolicy;
+use MigrationModule\Domain\Config\JobSettings;
+
 final class PreflightService
 {
     /** @param array<int, PreflightCheckInterface> $checks */

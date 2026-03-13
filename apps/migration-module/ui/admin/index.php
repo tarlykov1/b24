@@ -1,6 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
+$validation = [
+    'integrity' => 'Pending',
+    'statistics' => 'Pending',
+    'warnings' => 0,
+    'errors' => 0,
+    'problems' => [],
+];
 ?><!doctype html>
 <html lang="en">
 <head>
@@ -8,7 +16,7 @@ declare(strict_types=1);
     <title>Bitrix24 Migration Admin</title>
     <style>
         body { font-family: sans-serif; margin: 2rem; }
-        .panel { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; }
+        .panel { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; }
         .actions button { margin-right: .5rem; }
         form.filters { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(160px, 1fr)); }
     </style>

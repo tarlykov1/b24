@@ -25,6 +25,22 @@ final class ThrottlingService
         $this->lastRequestAt = (int) floor(microtime(true) * 1000);
     }
 
+    public function allowRequest(): bool
+    {
+        if ((time() - $this->windowStartedAt) >= 60) {
+            $this->windowStartedAt = time();
+            $this->requestsInWindow = 0;
+        }
+
+        if ($this->requestsInWindow >= $this->rpm) {
+            return false;
+        }
+
+        $this->requestsInWindow++;
+
+        return true;
+    }
+
     public function registerErrorSignal(): void
     {
         $this->rpm = max(10, $this->rpm - 5);
