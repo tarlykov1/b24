@@ -166,13 +166,23 @@
 Подробный production runbook: `docs/production-migration-guide.md`.
 
 
-## Этап 9: локальный Migration Assistant (без внешнего AI)
+## Этап 9: масштабирование для миллионов сущностей
 
-Добавлен интеллектуальный помощник миграции, рассчитанный на работу в air-gapped инфраструктуре:
-- `MigrationAssistantService` с explainable рекомендациями по pre-flight, плану фаз, нагрузке, mapping/healing/verification;
-- rule-based knowledge base (`apps/migration-module/config/assistant/rule-pack.json`);
-- deterministic fallback по умолчанию без внешних API;
-- опциональные флаги локального ML и локальной LLM без критической зависимости;
-- UI-блок `Migration Assistant` с `Why this recommendation` и operator checklist.
+Реализован большой этап масштабирования и устойчивости:
+- dependency-aware DAG-планировщик этапов (`MigrationStagePlanner`);
+- queue/chunk/batch оркестратор с checkpoint/resume (`ScalableMigrationOrchestrator`);
+- adaptive throttling с раздельными лимитами source/target/heavy и профилями `safe|balanced|aggressive` (`AdaptiveRateLimiter`);
+- high-water mark и incremental sync (`HighWaterMarkSyncService`);
+- identity mapping v2 (метод матчинга, версия, сигнатура, статус последней синхронизации);
+- расширенный monitoring dashboard (throughput, lag, rate-limit hits, memory/worker usage, success ratio, reconciliation coverage);
+- обновлённый runtime config (`migration.config.yml`) для больших нагрузок.
 
-Подробно: `docs/migration-assistant.md`.
+Подробная документация: `docs/scalable-migration-architecture.md`.
+
+### Быстрый сценарий запуска
+- **initial full migration**: профиль `safe`, основной прогон `initialRun=true`, затем отдельная фаза файлов.
+- **incremental sync**: прогон `initialRun=false` с high-water mark дозаливкой.
+- **repeat verification**: повторная сверка после incremental sync.
+
+## Autonomous Orchestrator Blueprint
+- Полный blueprint и кодовый каркас: `docs/autonomous-orchestrator-blueprint.md`.
