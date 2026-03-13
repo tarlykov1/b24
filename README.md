@@ -1,60 +1,60 @@
-# Bitrix24 Enterprise Migration Toolkit (Skeleton)
+# Набор инструментов миграции Bitrix24 Enterprise (каркас)
 
-Production-grade, resumable migration toolkit skeleton for migrating a live on-premise Bitrix24 Enterprise portal to a new on-premise Bitrix24 Enterprise portal.
+Производственный каркас отказоустойчивого и возобновляемого инструмента для миграции «живого» on-premise портала Bitrix24 Enterprise на новый on-premise портал Bitrix24 Enterprise.
 
-## Scope of this step
+## Объём текущего шага
 
-This commit delivers architecture scaffolding only:
-- directory structure
-- namespaces and module boundaries
-- database schema for migration state
-- service skeletons
-- CLI skeleton commands
-- basic admin UI skeleton
-- known Bitrix-specific uncertainties
+Этот коммит содержит только архитектурный каркас:
+- структуру директорий;
+- namespaces и границы модулей;
+- схему базы данных для состояния миграции;
+- каркасы сервисов;
+- каркасы CLI-команд;
+- базовый каркас админского UI;
+- список известных Bitrix-специфичных неопределённостей.
 
-No full migration logic is implemented yet.
+Полная логика миграции на этом этапе ещё не реализована.
 
-## Architecture
+## Архитектура
 
-## Part A: Export Agent (source portal)
-Path: `apps/export-agent`
+## Часть A: Export Agent (исходный портал)
+Путь: `apps/export-agent`
 
-Responsibilities:
-- safe/throttled batch export
-- checkpoint-aware delta extraction
-- filesystem export manifests
-- source-safe behavior (read-only operations)
+Зоны ответственности:
+- безопасный/троттлируемый пакетный экспорт;
+- извлечение дельты с учётом checkpoint;
+- файловые экспортные манифесты;
+- безопасное для источника поведение (операции только на чтение).
 
-Design principles:
-- isolate Bitrix calls in adapters
-- stateless workers + persisted checkpoints
-- explicit batch contracts and idempotent export chunks
+Принципы проектирования:
+- изоляция вызовов Bitrix в адаптерах;
+- stateless-воркеры + сохранённые checkpoints;
+- явные batch-контракты и идемпотентные export-чанки.
 
-## Part B: Migration Module (target portal)
-Path: `apps/migration-module`
+## Часть B: Migration Module (целевой портал)
+Путь: `apps/migration-module`
 
-Responsibilities:
-- queue lifecycle and worker orchestration
-- idempotent upsert/mapping strategy
-- diff-first behavior for repeated runs
-- pause/resume/soft-stop controls
-- verification and reporting
+Зоны ответственности:
+- жизненный цикл очереди и оркестрация воркеров;
+- идемпотентная стратегия upsert/mapping;
+- diff-first поведение для повторных прогонов;
+- управление паузой/возобновлением/мягкой остановкой;
+- верификация и отчётность.
 
-Design principles:
-- mapping-first relation restoration
-- stable job lifecycle state machine
-- automations imported disabled by default
-- source ID preservation attempt with conflict-safe remap fallback
+Принципы проектирования:
+- восстановление связей по принципу mapping-first;
+- стабильный state machine жизненного цикла задачи;
+- импорт автоматизаций в выключенном состоянии по умолчанию;
+- попытка сохранить source ID с безопасным fallback через remap при конфликтах.
 
-## Run modes
+## Режимы запуска
 - `initial_load`
 - `incremental_sync`
 - `delta_sync`
 - `reconciliation`
 - `verification`
 
-## Job lifecycle
+## Жизненный цикл задачи
 - `draft`
 - `ready`
 - `running`
@@ -68,8 +68,8 @@ Design principles:
 - `verification_required`
 - `verified`
 
-## Database schema
-See `db/migration_schema.sql` for:
+## Схема базы данных
+См. `db/migration_schema.sql`, где описаны таблицы:
 - `migration_entity_map`
 - `migration_user_map`
 - `migration_queue`
@@ -78,14 +78,14 @@ See `db/migration_schema.sql` for:
 - `migration_checkpoint`
 - `migration_diff`
 
-## CLI skeleton commands
-### Export agent
+## Каркас CLI-команд
+### Export Agent
 - `export:preflight`
 - `export:audit`
 - `export:batch`
 - `export:delta`
 
-### Migration module
+### Migration Module
 - `migration:preflight`
 - `migration:audit`
 - `migration:job:create`
@@ -96,45 +96,41 @@ See `db/migration_schema.sql` for:
 - `migration:diff`
 - `migration:verify`
 
-## Admin UI skeleton
-Path: `apps/migration-module/ui/admin/index.php`
+## Каркас админского UI
+Путь: `apps/migration-module/ui/admin/index.php`
 
-Provides placeholders for:
-- preflight status
-- audit summary
-- job control actions
-- diff approval gate
-- verification status
+Предусмотрены плейсхолдеры для:
+- статуса preflight;
+- сводки аудита;
+- действий управления задачей;
+- gate согласования diff;
+- статуса верификации.
 
-## Internationalization (i18n)
-- Locale catalog files are stored in `/locales/en.json` and `/locales/ru.json`.
-- Default locale is English (`en`) when no language was selected.
-- UI language switcher (`RU | EN`) saves current locale to `localStorage` (`migration.locale`).
-- UI elements (menus, buttons, statuses, dashboard labels, warnings/errors) use translation keys from locale JSON files.
-- Backend message keys (`MIGRATION_STARTED`, `MIGRATION_PAUSED`, `MIGRATION_COMPLETED`, etc.) are translated with `MigrationModule\Application\I18n\BackendMessageTranslator`.
-- Dates, time, and numbers are localized through browser `Intl.DateTimeFormat` and `Intl.NumberFormat` according to selected locale.
+## Локализация (i18n)
+- Файлы каталога локализации находятся в `/locales/en.json` и `/locales/ru.json`.
+- Бэкенд-сообщения (`MIGRATION_STARTED`, `MIGRATION_PAUSED`, `MIGRATION_COMPLETED` и т. п.) переводятся через `MigrationModule\Application\I18n\BackendMessageTranslator`.
+- В текущем UI-каркасе админки тексты пока захардкожены на английском и не подключены к JSON-каталогу.
 
-### Add a new language
-1. Add a new locale file in `/locales`, for example `/locales/de.json`.
-2. Copy all keys from `en.json` and provide translated values.
-3. Register the new locale in `TRANSLATIONS` object inside `apps/migration-module/ui/admin/index.php`.
-4. Add a language button in the UI top bar (`data-lang="de"`) to enable manual switching.
-5. Extend backend dictionary in `BackendMessageTranslator::DICTIONARY` for backend event/error codes.
+### Как добавить новый язык
+1. Добавьте новый файл локали в `/locales`, например `/locales/de.json`.
+2. Скопируйте все ключи из `en.json` и заполните переводы.
+3. Расширьте словарь в `BackendMessageTranslator::DICTIONARY` для backend-кодов событий/ошибок.
+4. Подключите новый каталог в UI-слое (после реализации клиентского переключателя языка).
 
-## Safety and idempotency strategy
-- enqueue immutable work units with deterministic deduplication keys
-- checkpoint progression only after durable writes
-- retries with backoff and adaptive throttling signals
-- no destructive source operations
-- target writes guarded by mapping + conflict handling
+## Стратегия безопасности и идемпотентности
+- постановка в очередь неизменяемых единиц работы с детерминированными ключами дедупликации;
+- продвижение checkpoint только после надёжной записи;
+- ретраи с backoff и адаптивными сигналами троттлинга;
+- отсутствие деструктивных операций на стороне источника;
+- запись в target защищена mapping-слоем и обработкой конфликтов.
 
-## Next step (implementation)
-1. implement adapters for Bitrix REST/DB/filesystem
-2. implement preflight checks and report writers
-3. implement audit inventory collectors
-4. implement queue workers + throttler feedback loop
-5. implement per-entity migrators with mapping enforcement
-6. implement verification suite and markdown/json reports
+## Следующий шаг (реализация)
+1. реализовать адаптеры для Bitrix REST/DB/filesystem;
+2. реализовать preflight-проверки и генерацию отчётов;
+3. реализовать сбор аудита сущностей;
+4. реализовать воркеры очереди + цикл обратной связи с троттлером;
+5. реализовать миграторы по сущностям с контролем mapping;
+6. реализовать набор верификации и markdown/json-отчёты.
 
-## Known uncertainties
-See `docs/bitrix-uncertainties.md`.
+## Известные неопределённости
+См. `docs/bitrix-uncertainties.md`.
