@@ -1,20 +1,4 @@
 profile: balanced
-profiles:
-  safe:
-    source_rpm: 20
-    target_rpm: 20
-    heavy_rpm: 6
-    parallel_workers: 2
-  balanced:
-    source_rpm: 35
-    target_rpm: 40
-    heavy_rpm: 8
-    parallel_workers: 4
-  aggressive:
-    source_rpm: 55
-    target_rpm: 65
-    heavy_rpm: 12
-    parallel_workers: 6
 rate_limit:
   source_rpm: 35
   target_rpm: 40

@@ -33,6 +33,23 @@ CREATE TABLE IF NOT EXISTS migration_entity_map (
     CONSTRAINT fk_entity_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS migration_user_map (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    source_user_id VARCHAR(128) NOT NULL,
+    target_user_id VARCHAR(128) NULL,
+    mapping_strategy VARCHAR(64) NOT NULL DEFAULT 'exact_or_remap',
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    note VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_map_source (job_id, source_user_id),
+    KEY idx_user_map_target (job_id, target_user_id),
+    KEY idx_user_map_status (job_id, status),
+    CONSTRAINT fk_user_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS migration_queue (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     job_id BIGINT UNSIGNED NOT NULL,
@@ -54,26 +71,6 @@ CREATE TABLE IF NOT EXISTS migration_queue (
     UNIQUE KEY uq_queue_dedupe (job_id, dedupe_key),
     KEY idx_queue_status_available (job_id, status, available_at),
     CONSTRAINT fk_queue_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS migration_log (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    job_id BIGINT UNSIGNED NOT NULL,
-    level VARCHAR(16) NOT NULL,
-    channel VARCHAR(32) NOT NULL,
-    entity_type VARCHAR(64) NULL,
-    old_id VARCHAR(128) NULL,
-    new_id VARCHAR(128) NULL,
-    action VARCHAR(64) NOT NULL,
-    error_message TEXT NULL,
-    retry_count INT NOT NULL DEFAULT 0,
-    execution_time_ms INT NOT NULL DEFAULT 0,
-    context_json JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_log_job_channel (job_id, channel),
-    KEY idx_log_entity (entity_type, old_id),
-    CONSTRAINT fk_log_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS migration_checkpoint (
