@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MigrationModule\Application\Mapping\AutoMappingService;
 use MigrationModule\Application\Plan\DryRunService;
 use MigrationModule\Application\Plan\MigrationPlanningService;
 use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
@@ -74,6 +75,83 @@ final class CoreServicesTest extends TestCase
 
         self::assertCount(1, $repo->operatorDecisions($jobId));
         self::assertSame('create_with_new_id', $repo->operatorDecisions($jobId)[0]['strategy']);
+    }
+
+
+    public function testAutoMappingBuildsConfigWithConfidenceAndConflicts(): void
+    {
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('dry_run');
+        $service = new AutoMappingService($repo);
+
+        $sourceSchema = [
+            'entities' => [
+                'crm_deals' => [
+                    'fields' => [
+                        'PHONE' => ['name' => 'Phone', 'type' => 'string'],
+                        'BUDGET_TEXT' => ['name' => 'Бюджет проекта', 'type' => 'text'],
+                    ],
+                    'stages' => [
+                        ['code' => 'NEW', 'name' => 'Новая', 'group' => 'process'],
+                        ['code' => 'WAIT_PAY', 'name' => 'В ожидании оплаты', 'group' => 'process'],
+                    ],
+                ],
+            ],
+        ];
+        $targetSchema = [
+            'entities' => [
+                'crm_deals' => [
+                    'fields' => [
+                        'PHONE' => ['name' => 'Phone', 'type' => 'string', 'required' => true],
+                        'PROJECT_BUDGET' => ['name' => 'Project Budget', 'type' => 'string'],
+                        'ASSIGNED_BY_ID' => ['name' => 'Account Owner', 'type' => 'user', 'required' => true],
+                    ],
+                    'stages' => [
+                        ['code' => 'NEW', 'name' => 'New', 'group' => 'process'],
+                    ],
+                ],
+            ],
+        ];
+
+        $map = $service->generate($jobId, $sourceSchema, $targetSchema, [['id' => '1', 'PHONE' => '+123']]);
+
+        self::assertNotEmpty($map['field_mappings']);
+        self::assertNotEmpty($map['stage_mappings']);
+        self::assertGreaterThan(0, $map['version']);
+        self::assertTrue(count($map['conflicts']) >= 1);
+        self::assertSame(1, count($repo->autoMappingHistory($jobId)));
+    }
+
+    public function testAutoMappingUsesHistoricalFieldMapping(): void
+    {
+        $repo = new MigrationRepository();
+        $jobId = $repo->beginJob('dry_run');
+        $repo->rememberHistoricalFieldMapping('crm_deals', 'UF_CRM_REGION', 'UF_CRM_REGION_NEW');
+        $service = new AutoMappingService($repo);
+
+        $sourceSchema = [
+            'entities' => [
+                'crm_deals' => [
+                    'fields' => [
+                        'UF_CRM_REGION' => ['name' => 'Region', 'type' => 'string'],
+                    ],
+                ],
+            ],
+        ];
+        $targetSchema = [
+            'entities' => [
+                'crm_deals' => [
+                    'fields' => [
+                        'UF_CRM_REGION_NEW' => ['name' => 'Region New', 'type' => 'string'],
+                    ],
+                ],
+            ],
+        ];
+
+        $map = $service->generate($jobId, $sourceSchema, $targetSchema);
+
+        self::assertSame('UF_CRM_REGION_NEW', $map['field_mappings'][0]['target_field']);
+        self::assertContains('historical_mapping', $map['field_mappings'][0]['signals']);
     }
 
     public function testReconciliationTotalsAndUnresolvedLinks(): void

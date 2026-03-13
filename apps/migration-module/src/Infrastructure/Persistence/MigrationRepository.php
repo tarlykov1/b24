@@ -29,6 +29,12 @@ final class MigrationRepository
     /** @var array<string, string> */
     private array $syncCheckpoints = [];
 
+    /** @var array<string, array<int, array<string,mixed>>> */
+    private array $autoMappingConfigs = [];
+
+    /** @var array<string, array<string,string>> */
+    private array $historicalFieldMappings = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -193,6 +199,38 @@ final class MigrationRepository
     public function clearCheckpoints(string $jobId): void
     {
         $this->checkpoints[$jobId] = [];
+    }
+
+    /** @param array<string,mixed> $config */
+    public function saveAutoMappingConfig(string $jobId, array $config): int
+    {
+        $history = $this->autoMappingConfigs[$jobId] ?? [];
+        $version = count($history) + 1;
+
+        $this->autoMappingConfigs[$jobId][] = [
+            'version' => $version,
+            'created_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+            'origin' => 'auto_generated',
+            'config' => $config,
+        ];
+
+        return $version;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function autoMappingHistory(string $jobId): array
+    {
+        return $this->autoMappingConfigs[$jobId] ?? [];
+    }
+
+    public function rememberHistoricalFieldMapping(string $entityType, string $sourceField, string $targetField): void
+    {
+        $this->historicalFieldMappings[$entityType][$sourceField] = $targetField;
+    }
+
+    public function findHistoricalFieldMapping(string $sourceField, string $entityType): ?string
+    {
+        return $this->historicalFieldMappings[$entityType][$sourceField] ?? null;
     }
 
 }
