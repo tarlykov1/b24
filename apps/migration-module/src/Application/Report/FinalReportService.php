@@ -22,6 +22,7 @@ final class FinalReportService
             'verification_report.json' => $payload['verification_report'] ?? [],
             'performance_report.json' => $payload['performance_report'] ?? [],
             'final_migration_report.json' => $this->buildFinalReport($payload),
+            'certification_report.json' => $payload['certification_report'] ?? [],
         ];
 
         $written = [];
@@ -57,6 +58,7 @@ final class FinalReportService
             'warnings' => $payload['warnings'] ?? [],
             'conflicts' => $payload['conflicts'] ?? [],
             'performance_metrics' => $payload['performance_report'] ?? [],
+            'certification' => $payload['certification_report']['certification_score'] ?? null,
         ];
     }
 

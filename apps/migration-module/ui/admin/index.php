@@ -15,9 +15,15 @@ declare(strict_types=1);
         .actions button { margin-right: .5rem; margin-bottom: .5rem; }
         .status-list { display: flex; flex-wrap: wrap; gap: .4rem; }
         .status-pill { border: 1px solid #c8c8c8; border-radius: 999px; padding: .2rem .6rem; font-size: 12px; }
+        .ok { color: #217a00; }
+        .warning { color: #a76a00; }
+        .critical { color: #b30000; }
         pre { background: #f8f8f8; border-radius: 6px; padding: 1rem; overflow-x: auto; max-height: 320px; }
         table { width: 100%; border-collapse: collapse; }
         td, th { border: 1px solid #ececec; padding: .35rem; text-align: left; }
+        .chart { display: grid; gap: .4rem; margin-top: .5rem; }
+        .bar { height: 14px; border-radius: 8px; background: #e9eef8; overflow: hidden; }
+        .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #5aa3ff, #2853ff); }
     </style>
 </head>
 <body>
@@ -68,6 +74,23 @@ declare(strict_types=1);
     </div>
 </div>
 
+<div class="panel">
+    <h2>Migration Verification</h2>
+    <p><span class="ok">✔ Verified entities: <b id="verified-count">0</b></span> &nbsp; <span class="warning">⚠ Warnings: <b id="warning-count">0</b></span> &nbsp; <span class="critical">✖ Critical issues: <b id="critical-count">0</b></span></p>
+    <div class="grid">
+        <div>
+            <h3>Coverage</h3>
+            <div class="chart" id="coverage-chart"></div>
+        </div>
+        <div>
+            <h3>Integrity</h3>
+            <div class="chart" id="integrity-chart"></div>
+        </div>
+    </div>
+    <h3>Error distribution</h3>
+    <div class="chart" id="error-chart"></div>
+</div>
+
 <div class="grid">
     <div class="panel"><h2>Сверка после миграции</h2><pre id="reconciliation-report">{}</pre></div>
     <div class="panel"><h2>Конфликты</h2><pre id="conflicts-report">[]</pre></div>
@@ -83,6 +106,7 @@ declare(strict_types=1);
         <li>delta_sync_report.json</li>
         <li>verification_report.json</li>
         <li>performance_report.json</li>
+        <li>certification_report.json / .html / .pdf</li>
     </ul>
 </div>
 
@@ -90,9 +114,10 @@ declare(strict_types=1);
 const source = {
     users: [{id: '1', email: 'owner@x.io'}],
     tasks: [{id: '10', responsible_id: '1', created_by: '1'}],
-    crm_deals: [{id: '77', title: 'Deal', company_id: '15'}],
+    deals: [{id: '77', title: 'Deal', stage_id: 'NEW', amount: 1200, company_id: '15'}],
+    files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}],
 };
-const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [], crm_deals: [] };
+const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [{id: '10', responsible_id: '1', created_by: '1'}], deals: [{id: '77', title: 'Deal', stage_id: 'IN_PROGRESS', amount: 1200, company_id: '15'}], files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}] };
 
 const computePlan = () => {
     const items = [];
@@ -112,6 +137,47 @@ const renderPlan = (items) => {
     document.getElementById('migration-plan').textContent = JSON.stringify(filtered, null, 2);
 };
 
+const renderBar = (label, pct) => `<div>${label}: ${pct}%<div class="bar"><span style="width:${pct}%"></span></div></div>`;
+
+const renderVerification = () => {
+    const entities = ['users', 'tasks', 'deals', 'files'];
+    let verified = 0;
+    let warnings = 0;
+    let critical = 0;
+
+    for (const entity of entities) {
+        const s = source[entity] ?? [];
+        const t = new Map((target[entity] ?? []).map((r) => [r.id, r]));
+        for (const row of s) {
+            const targetRow = t.get(row.id);
+            if (!targetRow) {
+                critical++;
+                continue;
+            }
+            if (entity === 'deals' && row.stage_id !== targetRow.stage_id) {
+                warnings++;
+            } else {
+                verified++;
+            }
+        }
+    }
+
+    document.getElementById('verified-count').textContent = verified;
+    document.getElementById('warning-count').textContent = warnings;
+    document.getElementById('critical-count').textContent = critical;
+
+    const total = verified + warnings + critical;
+    const coverage = total ? Math.round((verified + warnings) / total * 100) : 0;
+    const integrity = total ? Math.round((verified) / total * 100) : 0;
+
+    document.getElementById('coverage-chart').innerHTML = renderBar('Verified+Warning coverage', coverage);
+    document.getElementById('integrity-chart').innerHTML = renderBar('Strict integrity', integrity);
+    document.getElementById('error-chart').innerHTML = [
+        renderBar('Warnings', total ? Math.round(warnings / total * 100) : 0),
+        renderBar('Critical', total ? Math.round(critical / total * 100) : 0)
+    ].join('');
+};
+
 document.getElementById('dry-run-btn').addEventListener('click', () => {
     const plan = computePlan();
     const summary = plan.reduce((acc, item) => ((acc[item.action] = (acc[item.action] ?? 0) + 1), acc), {create: 0, update: 0, skip: 0, conflict: 0, manual_review: 0});
@@ -120,14 +186,16 @@ document.getElementById('dry-run-btn').addEventListener('click', () => {
     document.getElementById('progress-entities').textContent = '40%';
     document.getElementById('progress-stages').textContent = 'mapping';
     document.getElementById('progress-current').textContent = plan[0]?.entity_type + ':' + plan[0]?.source_id;
+    renderVerification();
 });
 
 document.getElementById('plan-filter').addEventListener('change', () => renderPlan(computePlan()));
 
 document.getElementById('delta-preview-btn').addEventListener('click', () => {
     document.getElementById('delta-preview').textContent = 'found new: 2, changed: 1, conflicts: 0';
-    document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {total_source: 1, total_target: 1, matched: 1}}, null, 2);
-    document.getElementById('conflicts-report').textContent = JSON.stringify([], null, 2);
+    document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {source_count: 1, target_count: 1, status: 'OK'}, deals: {source_count: 1, target_count: 1, status: 'WARNING'}}, null, 2);
+    document.getElementById('conflicts-report').textContent = JSON.stringify([{entity: 'deals', id: '77', issue: 'stage mismatch'}], null, 2);
+    renderVerification();
 });
 </script>
 </body>

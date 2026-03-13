@@ -164,3 +164,14 @@
 - `bin/migration-module` — CLI-команды: `migration start|pause|resume|status|verify|dry-run|delta-sync|cutover|rollback|report`.
 
 Подробный production runbook: `docs/production-migration-guide.md`.
+
+
+## Этап 9: Reconciliation Engine и Migration Certification
+
+Реализованы блоки финальной сверки и сертификации миграции:
+- `ReconciliationEngineService` — многоуровневая асинхронно-батчевая сверка source/target с adaptive sampling, проверкой mapping, ключевых полей, связей, стадий, файлов и timeline-сущностей.
+- `CertificationReportService` — генерация Certification Report в `JSON/HTML/PDF` с итоговым Certification Score и рекомендациями.
+- Автоформирование repair jobs по аномалиям и запуск цикла `reconciliation → repair → reconciliation`.
+- UI-раздел `Migration Verification` с KPI по verified/warning/critical и графиками coverage/integrity/error distribution.
+
+Подробности: `docs/reconciliation-certification.md`.
