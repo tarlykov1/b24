@@ -6,20 +6,34 @@ namespace MigrationModule\Application\Throttling;
 
 final class ThrottlingService
 {
-    /** @return array{batch_size:int, workers:int, rpm:int, file_parallelism:int, sleep_ms:int} */
-    public function currentLimits(): array
+    /** @var array{batch_size:int,source_rpm:int,target_rpm:int,pause_between_batches_ms:int,max_retries:int,backoff_base_ms:int} */
+    private array $limits;
+
+    public function __construct(?array $limits = null)
     {
-        return [
-            'batch_size' => 100,
-            'workers' => 1,
-            'rpm' => 60,
-            'file_parallelism' => 1,
-            'sleep_ms' => 500,
+        $this->limits = $limits ?? [
+            'batch_size' => 50,
+            'source_rpm' => 30,
+            'target_rpm' => 30,
+            'pause_between_batches_ms' => 750,
+            'max_retries' => 5,
+            'backoff_base_ms' => 250,
         ];
     }
 
-    public function registerErrorSignal(): void
+    /** @return array{batch_size:int,source_rpm:int,target_rpm:int,pause_between_batches_ms:int,max_retries:int,backoff_base_ms:int} */
+    public function currentLimits(): array
     {
-        // TODO: adaptive slowdown policy.
+        return $this->limits;
+    }
+
+    public function pauseBetweenBatches(): void
+    {
+        usleep($this->limits['pause_between_batches_ms'] * 1000);
+    }
+
+    public function backoffDelayMs(int $attempt): int
+    {
+        return $this->limits['backoff_base_ms'] * (2 ** max(0, $attempt - 1));
     }
 }

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS migration_job (
     mode VARCHAR(32) NOT NULL,
     status VARCHAR(32) NOT NULL,
     config_json JSON NOT NULL,
+    preview_required TINYINT(1) NOT NULL DEFAULT 0,
     source_checkpoint VARCHAR(255) NULL,
     started_at DATETIME NULL,
     finished_at DATETIME NULL,
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS migration_entity_map (
     entity_type VARCHAR(64) NOT NULL,
     source_id VARCHAR(128) NOT NULL,
     target_id VARCHAR(128) NOT NULL,
+    migrated_flag TINYINT(1) NOT NULL DEFAULT 0,
     preserved_source_id TINYINT(1) NOT NULL DEFAULT 0,
     remap_reason VARCHAR(255) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -31,27 +33,11 @@ CREATE TABLE IF NOT EXISTS migration_entity_map (
     CONSTRAINT fk_entity_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS migration_user_map (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    job_id BIGINT UNSIGNED NOT NULL,
-    source_user_id BIGINT UNSIGNED NOT NULL,
-    source_login VARCHAR(255) NOT NULL,
-    source_email VARCHAR(255) NOT NULL,
-    target_user_id BIGINT UNSIGNED NOT NULL,
-    excluded_reason VARCHAR(255) NULL,
-    archived_flag TINYINT(1) NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_user_source (job_id, source_user_id),
-    UNIQUE KEY uq_user_email (job_id, source_email),
-    KEY idx_user_target (target_user_id),
-    CONSTRAINT fk_user_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS migration_queue (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     job_id BIGINT UNSIGNED NOT NULL,
+    stage VARCHAR(64) NOT NULL,
+    batch_no INT NOT NULL DEFAULT 0,
     entity_type VARCHAR(64) NOT NULL,
     operation VARCHAR(64) NOT NULL,
     dedupe_key VARCHAR(191) NOT NULL,
@@ -94,6 +80,8 @@ CREATE TABLE IF NOT EXISTS migration_checkpoint (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     job_id BIGINT UNSIGNED NOT NULL,
     scope VARCHAR(128) NOT NULL,
+    stage VARCHAR(64) NULL,
+    batch_no INT NULL,
     checkpoint_value VARCHAR(255) NOT NULL,
     checkpoint_meta_json JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
