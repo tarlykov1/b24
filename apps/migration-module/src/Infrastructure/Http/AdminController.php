@@ -20,8 +20,19 @@ final class AdminController
         return $this->logRepository->findByFilters($filters);
     }
 
+    /** @return array<string,mixed> */
+    public function auditConfig(): array
+    {
+        return [
+            'batch_size' => 50,
+            'delay_ms' => 300,
+            'supports_rerun' => true,
+            'exports' => ['json', 'csv', 'html'],
+        ];
+    }
+
     public function index(): string
     {
-        return 'Migration admin UI: use filters by type, date and entity';
+        return 'Migration admin UI: use filters by type, date and entity. Audit tab supports Run Audit and Export Report.';
     }
 }

@@ -1,0 +1,49 @@
+{
+  "migration_info": {
+    "migration_date": "2026-03-13T10:21:10.101Z",
+    "duration_ms": 1872,
+    "entity_counts": {
+      "users": 351,
+      "tasks": 12840,
+      "comments": 55198,
+      "groups": 62
+    }
+  },
+  "users": {
+    "total_migrated": 351,
+    "skipped": 1,
+    "deactivated": 7
+  },
+  "tasks": {
+    "migrated": 12840,
+    "updated": 45,
+    "errors": 1
+  },
+  "comments": {
+    "migrated": 55198,
+    "skipped": 13
+  },
+  "integrity": {
+    "status": "warning"
+  },
+  "portal_diff": {
+    "text_report": "Users\nOld portal: 352\nNew portal: 351\nDifference: 1 missing\n\nTasks\nOld portal: 12840\nNew portal: 12840\nOK\n\nComments\nOld portal: 55211\nNew portal: 55198\nDifference: 13 missing"
+  },
+  "errors": [
+    {
+      "type": "missing_relation",
+      "entity": "task",
+      "entity_id": "8912",
+      "problem": "responsible user not found",
+      "suggested_fix": "assign system user",
+      "timestamp": "2026-03-13T10:21:12.219Z"
+    }
+  ],
+  "snapshot": {
+    "users_count": 351,
+    "tasks_count": 12840,
+    "comments_count": 55198,
+    "groups_count": 62,
+    "migration_timestamp": "2026-03-13T10:21:13.920Z"
+  }
+}

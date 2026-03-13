@@ -1,0 +1,3 @@
+{"type":"missing_relation","entity":"task","entity_id":"8912","problem":"responsible user not found","suggested_fix":"assign system user","timestamp":"2026-03-13T10:21:12.219Z"}
+{"type":"field_mismatch","entity":"user","entity_id":"42","problem":"email mismatch","suggested_fix":"synchronize email from source portal","timestamp":"2026-03-13T10:21:12.511Z"}
+{"type":"missing_entity","entity":"comment","entity_id":"55210","problem":"comment missing in target portal","suggested_fix":"re-run comment migration for this entity ID","timestamp":"2026-03-13T10:21:13.004Z"}
