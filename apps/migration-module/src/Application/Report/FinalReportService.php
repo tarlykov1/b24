@@ -21,6 +21,7 @@ final class FinalReportService
             'delta_sync_report.json' => $payload['delta_sync_report'] ?? [],
             'verification_report.json' => $payload['verification_report'] ?? [],
             'performance_report.json' => $payload['performance_report'] ?? [],
+            'final_migration_report.json' => $this->buildFinalReport($payload),
         ];
 
         $written = [];
@@ -35,6 +36,28 @@ final class FinalReportService
         $written[] = $csvPath;
 
         return $written;
+    }
+
+
+    /** @param array<string,mixed> $payload @return array<string,mixed> */
+    public function buildFinalReport(array $payload): array
+    {
+        return [
+            'duration_seconds' => $payload['duration_seconds'] ?? 0,
+            'totals' => [
+                'users_migrated' => $payload['users_migrated'] ?? 0,
+                'companies_migrated' => $payload['companies_migrated'] ?? 0,
+                'contacts_migrated' => $payload['contacts_migrated'] ?? 0,
+                'deals_migrated' => $payload['deals_migrated'] ?? 0,
+                'tasks_migrated' => $payload['tasks_migrated'] ?? 0,
+                'comments_migrated' => $payload['comments_migrated'] ?? 0,
+                'files_migrated' => $payload['files_migrated'] ?? 0,
+            ],
+            'errors' => $payload['errors'] ?? [],
+            'warnings' => $payload['warnings'] ?? [],
+            'conflicts' => $payload['conflicts'] ?? [],
+            'performance_metrics' => $payload['performance_report'] ?? [],
+        ];
     }
 
     /** @param array<string,array<string,int|string>> $entities */

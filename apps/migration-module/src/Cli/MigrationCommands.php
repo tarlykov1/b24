@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace MigrationModule\Cli;
 
+use MigrationModule\Application\Checkpoint\CheckpointService;
+use MigrationModule\Application\Config\ProductionConfigService;
+use MigrationModule\Application\Cutover\CutoverService;
+use MigrationModule\Application\Monitoring\MonitoringDashboardService;
 use MigrationModule\Application\Plan\DryRunService;
 use MigrationModule\Application\Plan\MigrationPlanningService;
+use MigrationModule\Application\Readiness\ProductionReadinessChecklistService;
 use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
 use MigrationModule\Application\Report\FinalReportService;
+use MigrationModule\Application\Rollback\RollbackService;
 use MigrationModule\Application\Sync\DeltaSyncService;
 use MigrationModule\Infrastructure\Persistence\MigrationRepository;
 
@@ -20,6 +26,12 @@ final class MigrationCommands
         private readonly PostMigrationReconciliationService $reconciliationService,
         private readonly DeltaSyncService $deltaSyncService,
         private readonly FinalReportService $reportService,
+        private readonly CutoverService $cutoverService,
+        private readonly RollbackService $rollbackService,
+        private readonly CheckpointService $checkpointService,
+        private readonly ProductionConfigService $configService,
+        private readonly MonitoringDashboardService $dashboardService,
+        private readonly ProductionReadinessChecklistService $readinessChecklist,
     ) {
     }
 
@@ -60,6 +72,72 @@ final class MigrationCommands
             $targetRecords,
             $this->repository->syncCheckpoint($entityType),
         );
+    }
+
+    /** @param array<string,mixed> $verificationReport @param array<int,array<string,mixed>> $sourceRecords @param array<int,array<string,mixed>> $targetRecords */
+    public function cutover(
+        string $jobId,
+        string $entityType,
+        array $verificationReport,
+        array $sourceRecords,
+        array $targetRecords,
+        bool $confirmStart,
+        bool $confirmSwitch,
+    ): array {
+        return $this->cutoverService->execute(
+            $jobId,
+            $entityType,
+            $verificationReport,
+            $sourceRecords,
+            $targetRecords,
+            $confirmStart,
+            $confirmSwitch,
+            ['freeze_supported' => true],
+        );
+    }
+
+    public function rollback(string $jobId, string $reason, string $stage, string $mode = 'safe'): array
+    {
+        return $this->rollbackService->run($jobId, $reason, $stage, $mode);
+    }
+
+    /** @param array<string,mixed> $queueState */
+    public function checkpoint(string $stage, ?string $lastEntity, array $queueState): ?array
+    {
+        $this->checkpointService->save($stage, $lastEntity, $queueState);
+
+        return $this->checkpointService->load();
+    }
+
+    public function status(string $jobId): array
+    {
+        return [
+            'job_id' => $jobId,
+            'stage' => $this->repository->jobStatus($jobId) ?? 'unknown',
+            'progress' => count($this->repository->mappings($jobId)),
+            'stats' => [
+                'reports' => count($this->repository->reports($jobId)),
+                'decisions' => count($this->repository->operatorDecisions($jobId)),
+            ],
+        ];
+    }
+
+    /** @param array<string,mixed> $status @param array<string,float|int> $metrics */
+    public function dashboard(array $status, array $metrics): array
+    {
+        return $this->dashboardService->build($status, $metrics);
+    }
+
+    /** @param array<string,bool> $checks */
+    public function readiness(array $checks): array
+    {
+        return $this->readinessChecklist->evaluate($checks);
+    }
+
+    /** @return array<string,mixed> */
+    public function config(string $path = 'migration.config.yml'): array
+    {
+        return $this->configService->load($path);
     }
 
     /** @param array<string,mixed> $payload */

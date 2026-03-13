@@ -1,0 +1,13 @@
+profile: balanced
+rate_limit: 80
+batch_size: 100
+retry_policy:
+  max_retries: 4
+  base_delay_ms: 150
+  max_delay_ms: 4000
+api_timeout: 15
+parallel_workers: 3
+delta_sync_interval: 30
+freeze_mode_enabled: true
+conflict_strategy: prefer_target
+logging_level: info

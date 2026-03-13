@@ -166,4 +166,33 @@ final class MigrationRepository
         return $this->syncCheckpoints[$entityType] ?? null;
     }
 
+    public function setJobStatus(string $jobId, string $status): void
+    {
+        $this->jobs[$jobId]['status'] = $status;
+        if (in_array($status, ['COMPLETED', 'ROLLED_BACK', 'FAILED'], true)) {
+            $this->jobs[$jobId]['ended_at'] = new DateTimeImmutable();
+        }
+    }
+
+
+    public function updateJobStatus(string $jobId, string $status): void
+    {
+        $this->setJobStatus($jobId, $status);
+    }
+
+    public function jobStatus(string $jobId): ?string
+    {
+        return $this->jobs[$jobId]['status'] ?? null;
+    }
+
+    public function clearMappings(string $jobId): void
+    {
+        $this->mappings[$jobId] = [];
+    }
+
+    public function clearCheckpoints(string $jobId): void
+    {
+        $this->checkpoints[$jobId] = [];
+    }
+
 }
