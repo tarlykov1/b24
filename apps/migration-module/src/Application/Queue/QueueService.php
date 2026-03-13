@@ -13,14 +13,24 @@ final class QueueService
     /** @var SplQueue<QueueItem> */
     private SplQueue $queue;
 
+    /** @var array<string,array<string,bool>> */
+    private array $done = [];
+
     public function __construct(private readonly ThrottlingService $throttlingService)
     {
         $this->queue = new SplQueue();
     }
 
-    public function enqueue(QueueItem $item): void
+    public function enqueue(QueueItem|string $itemOrJobId, ?QueueItem $item = null): void
     {
-        $this->queue->enqueue($item);
+        if ($itemOrJobId instanceof QueueItem) {
+            $this->queue->enqueue($itemOrJobId);
+            return;
+        }
+
+        if ($item instanceof QueueItem) {
+            $this->queue->enqueue($item);
+        }
     }
 
     /** @return array<int, QueueItem> */
@@ -33,5 +43,10 @@ final class QueueService
         }
 
         return $reserved;
+    }
+
+    public function markDone(string $jobId, string $itemId): void
+    {
+        $this->done[$jobId][$itemId] = true;
     }
 }

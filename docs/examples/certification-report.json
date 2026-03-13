@@ -1,0 +1,40 @@
+{
+  "summary": {
+    "migration_date": "2026-03-13T10:00:00+00:00",
+    "tool_version": "1.9.0",
+    "source_portal": "https://old-b24.local",
+    "target_portal": "https://new-b24.local",
+    "data_volume": 2543210
+  },
+  "migration_statistics": {
+    "transferred": 2543200,
+    "updated": 42110,
+    "skipped": 19,
+    "self_healed": 11
+  },
+  "certification_score": {
+    "data_completeness": "99.98%",
+    "relation_integrity": "99.99%",
+    "field_accuracy": "99.95%",
+    "file_integrity": "100.00%",
+    "overall_score": "99.98%",
+    "certification_status": "Migration Certified"
+  },
+  "recommendations": [
+    "Run incremental sync for the next 24h monitoring window.",
+    "Fix 3 quarantined entities.",
+    "Review stage mapping for custom pipeline SALES_X."
+  ],
+  "repair_cycle": {
+    "cycle": "reconciliation → repair → reconciliation",
+    "repair_jobs": [
+      {
+        "repair_job_id": "repair-0001",
+        "entity": "deals",
+        "reason": "amount_drift",
+        "pipeline": "self-healing",
+        "status": "queued"
+      }
+    ]
+  }
+}

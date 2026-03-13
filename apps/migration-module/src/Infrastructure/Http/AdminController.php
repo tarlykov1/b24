@@ -30,6 +30,8 @@ final class AdminController
             'batch_size' => 50,
             'delay_ms' => 300,
             'supports_rerun' => true,
+            'profiles' => ['safe', 'balanced', 'aggressive'],
+            'modes' => ['dry_run', 'initial_full_migration', 'incremental_sync', 'repeat_verification'],
             'exports' => ['json', 'csv', 'html'],
         ];
     }
@@ -52,6 +54,6 @@ final class AdminController
 
     public function index(): string
     {
-        return 'Migration admin UI: use filters by type, date and entity. Audit tab supports Run Audit and Export Report.';
+        return 'Migration admin UI: use filters by type, date and entity. Audit tab supports Run Audit and Export Report. Auto mapping tab supports schema scan, confidence and manual correction.';
     }
 }

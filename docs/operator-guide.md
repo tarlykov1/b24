@@ -42,3 +42,9 @@
 - по ключевым группам `matched` близок к `total_source`;
 - `missing_in_target` и `conflicts` в допустимом операционном пороге;
 - unresolved links разобраны и закрыты операторами.
+
+## Self-healing manual review
+- Откройте экран Quarantine в админ-модуле.
+- Используйте фильтры по категории ошибки и severity.
+- Доступные действия: Retry, Apply Suggested Fix, Ignore, Export Error Report.
+- Перед применением override убедитесь, что safe-to-heal = false и кейс документирован.
