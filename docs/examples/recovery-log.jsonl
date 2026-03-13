@@ -1,0 +1,4 @@
+{"ts":"2026-03-13T11:00:00.000Z","module":"recovery","operation_id":"registry-1","type":"missing_user","entity":"user","entity_id":"456","status":"processing"}
+{"ts":"2026-03-13T11:00:00.300Z","module":"recovery","operation_id":"registry-1","type":"missing_user","entity":"user","entity_id":"456","status":"resolved","details":{"imported_user_id":456,"strategy":"create_deactivated_user"}}
+{"ts":"2026-03-13T11:00:00.500Z","module":"recovery","operation_id":"registry-2","type":"missing_comment","entity":"comment","entity_id":"101","status":"resolved","details":{"imported_comment_id":101}}
+{"ts":"2026-03-13T11:00:01.000Z","module":"recovery","operation_id":"registry-3","type":"duplicate_id","entity":"task","entity_id":"10","status":"resolved","details":{"action":"created_remap","mapped_to":"110"}}

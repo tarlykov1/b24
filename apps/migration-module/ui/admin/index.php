@@ -25,6 +25,7 @@ $validation = [
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         pre { background: #f8f8f8; border-radius: 6px; padding: 1rem; overflow-x: auto; }
+        .grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(240px, 1fr)); }
     </style>
 </head>
 <body>
@@ -33,6 +34,7 @@ $validation = [
 <div class="tabs">
     <button class="tab-button active" data-tab="overview">Overview</button>
     <button class="tab-button" data-tab="audit">Migration Audit</button>
+    <button class="tab-button" data-tab="recovery">Recovery</button>
 </div>
 
 <section id="tab-overview" class="tab-content active">
@@ -92,6 +94,31 @@ $validation = [
     </div>
 </section>
 
+<section id="tab-recovery" class="tab-content">
+    <div class="panel">
+        <h2>Recovery System</h2>
+        <div class="grid">
+            <p><b>Total errors:</b> <span id="recovery-error-count">0</span></p>
+            <p><b>Resolved:</b> <span id="recovery-resolved-count">0</span></p>
+            <p><b>Queue stats:</b> <span id="recovery-queue-stats">No recovery runs yet</span></p>
+            <label><input id="auto-recovery-toggle" type="checkbox"> Auto Recovery</label>
+        </div>
+        <div class="actions">
+            <button id="run-recovery-btn">Run Recovery</button>
+            <button id="retry-failed-btn">Retry Failed</button>
+            <button id="ignore-error-btn">Ignore Error</button>
+        </div>
+    </div>
+    <div class="panel">
+        <h3>Errors & Recovery Status</h3>
+        <pre id="recovery-errors">[]</pre>
+    </div>
+    <div class="panel">
+        <h3>Recovery Queue</h3>
+        <pre id="recovery-queue">[]</pre>
+    </div>
+</section>
+
 <script type="module">
 import { MigrationAuditModule } from '/audit/index.js';
 
@@ -105,26 +132,56 @@ for (const tab of tabs) {
     });
 }
 
-const auditModule = new MigrationAuditModule({ batch_size: 50, delay_ms: 300 });
+const auditModule = new MigrationAuditModule({
+    batch_size: 50,
+    delay_ms: 300,
+    recovery: {
+        batch_size: 20,
+        delay_ms: 500,
+        retry_limit: 3,
+        auto_recovery: false,
+        inactive_user_policy: 'create_deactivated_user',
+        system_user_id: '1',
+    },
+});
+
 const runButton = document.getElementById('run-audit-btn');
 const exportButton = document.getElementById('export-report-btn');
+const runRecoveryButton = document.getElementById('run-recovery-btn');
+const retryFailedButton = document.getElementById('retry-failed-btn');
+const ignoreErrorButton = document.getElementById('ignore-error-btn');
+const autoRecoveryToggle = document.getElementById('auto-recovery-toggle');
 let latestResult = null;
+let latestRecovery = null;
 
 const oldPortal = {
-    users: [{ id: 1, email: 'owner@company.tld', active: true }],
-    tasks: [{ id: 10, responsible_id: 1, created_by: 1, group_id: 7, status: 'new' }],
-    comments: [{ id: 100, task_id: 10, author: 1 }],
-    groups: [{ id: 7, owner_id: 1, member_ids: [1] }],
+    users: [{ id: 1, email: 'owner@company.tld', active: true }, { id: 456, email: 'old.user@company.tld', active: false }],
+    tasks: [{ id: 10, responsible_id: 456, created_by: 1, group_id: 7, status: 'new' }],
+    comments: [{ id: 100, task_id: 10, author: 456 }, { id: 101, task_id: 10, author: 1 }],
+    groups: [{ id: 7, owner_id: 1, member_ids: [1, 456] }],
 };
 
 const newPortal = {
     users: [{ id: 1, email: 'owner@company.tld', active: true }],
-    tasks: [{ id: 10, responsible_id: 1, created_by: 1, group_id: 7, status: 'new' }],
+    tasks: [{ id: 10, responsible_id: 456, created_by: 1, group_id: 7, status: 'new' }],
     comments: [{ id: 100, task_id: 10, author: 1 }],
     groups: [{ id: 7, owner_id: 1, member_ids: [1] }],
 };
 
 const fetchPaged = (dataset) => async (entity, { offset, limit }) => (dataset[entity] ?? []).slice(offset, offset + limit);
+
+const renderRecovery = () => {
+    const issues = auditModule.errorRegistry.all();
+    const resolvedCount = issues.filter((item) => item.recovery_status === 'resolved').length;
+    document.getElementById('recovery-error-count').textContent = String(issues.length);
+    document.getElementById('recovery-resolved-count').textContent = String(resolvedCount);
+    document.getElementById('recovery-errors').textContent = JSON.stringify(issues, null, 2);
+
+    if (latestRecovery) {
+        document.getElementById('recovery-queue').textContent = JSON.stringify(latestRecovery.queue, null, 2);
+        document.getElementById('recovery-queue-stats').textContent = JSON.stringify(latestRecovery.queue_stats);
+    }
+};
 
 runButton.addEventListener('click', async () => {
     latestResult = await auditModule.runAudit({
@@ -138,6 +195,33 @@ runButton.addEventListener('click', async () => {
     document.getElementById('audit-stats').textContent = JSON.stringify(latestResult.report.migration_info.entity_counts);
     document.getElementById('audit-problems').textContent = JSON.stringify(latestResult.issues, null, 2);
     document.getElementById('audit-diff').textContent = latestResult.report.portal_diff.text_report;
+    latestRecovery = latestResult.recovery;
+    renderRecovery();
+});
+
+runRecoveryButton.addEventListener('click', async () => {
+    latestRecovery = await auditModule.runRecovery({ sourcePortalData: oldPortal, targetPortalData: newPortal });
+    renderRecovery();
+});
+
+retryFailedButton.addEventListener('click', async () => {
+    latestRecovery = await auditModule.retryFailedRecovery({ sourcePortalData: oldPortal, targetPortalData: newPortal });
+    renderRecovery();
+});
+
+ignoreErrorButton.addEventListener('click', () => {
+    const firstPending = auditModule.errorRegistry.all().find((entry) => entry.recovery_status === 'pending');
+    if (!firstPending) {
+        alert('No pending errors');
+        return;
+    }
+
+    auditModule.ignoreError(firstPending.id, 'ignored_from_ui');
+    renderRecovery();
+});
+
+autoRecoveryToggle.addEventListener('change', () => {
+    auditModule.recoveryEngine.auto_recovery = autoRecoveryToggle.checked;
 });
 
 exportButton.addEventListener('click', () => {
