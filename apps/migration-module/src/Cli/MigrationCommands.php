@@ -12,6 +12,8 @@ use MigrationModule\Application\Plan\DryRunService;
 use MigrationModule\Application\Plan\MigrationPlanningService;
 use MigrationModule\Application\Readiness\ProductionReadinessChecklistService;
 use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
+use MigrationModule\Application\Reconciliation\ReconciliationEngineService;
+use MigrationModule\Application\Report\CertificationReportService;
 use MigrationModule\Application\Report\FinalReportService;
 use MigrationModule\Application\Rollback\RollbackService;
 use MigrationModule\Application\Sync\DeltaSyncService;
@@ -144,5 +146,25 @@ final class MigrationCommands
     public function exportReports(array $payload, string $dir = 'reports'): array
     {
         return $this->reportService->writeBundle($payload, $dir);
+    }
+
+    /** @param array<string, array<int, array<string, mixed>>> $source @param array<string, array<int, array<string, mixed>>> $target @param array<string,mixed> $context */
+    public function verifyAndCertify(string $jobId, array $source, array $target, array $context = [], string $dir = 'reports'): array
+    {
+        $engine = new ReconciliationEngineService($this->repository);
+        $certifier = new CertificationReportService();
+
+        $reconciliation = $engine->run($jobId, $source, $target, [
+            'batch_size' => 500,
+            'rate_limit_rps' => 20,
+            'async_workers' => 4,
+        ]);
+
+        $certification = $certifier->generate($context, $reconciliation, $dir);
+
+        return [
+            'reconciliation' => $reconciliation,
+            'certification' => $certification,
+        ];
     }
 }

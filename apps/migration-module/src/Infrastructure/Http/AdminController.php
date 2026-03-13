@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace MigrationModule\Infrastructure\Http;
 
-use MigrationModule\Application\Mapping\AutoMappingService;
+use MigrationModule\Application\Assistant\MigrationAssistantService;
 use MigrationModule\Infrastructure\Persistence\Log\MigrationLogRepositoryInterface;
 
 final class AdminController
 {
     public function __construct(
         private readonly MigrationLogRepositoryInterface $logRepository,
-        private readonly ?AutoMappingService $autoMappingService = null,
+        private readonly ?MigrationAssistantService $assistant = null,
     ) {
     }
 
@@ -36,21 +36,20 @@ final class AdminController
         ];
     }
 
-    /** @param array<string,mixed> $sourceSchema @param array<string,mixed> $targetSchema @param array<int,array<string,mixed>> $sampleData
+
+    /** @param array<string,mixed> $snapshot @param array<int,array<string,mixed>> $history
      * @return array<string,mixed>
      */
-    public function autoMappingPreview(string $jobId, array $sourceSchema, array $targetSchema, array $sampleData = []): array
+    public function migrationAssistant(array $snapshot, array $history = []): array
     {
-        if ($this->autoMappingService === null) {
+        if ($this->assistant === null) {
             return [
-                'error' => 'auto_mapping_service_not_configured',
-                'field_mappings' => [],
-                'stage_mappings' => [],
-                'enum_mappings' => [],
+                'status' => 'disabled',
+                'message' => 'Migration Assistant не инициализирован.',
             ];
         }
 
-        return $this->autoMappingService->generate($jobId, $sourceSchema, $targetSchema, $sampleData);
+        return $this->assistant->assess($snapshot, $history, 'guided');
     }
 
     public function index(): string

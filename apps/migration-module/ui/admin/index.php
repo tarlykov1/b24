@@ -15,15 +15,15 @@ declare(strict_types=1);
         .actions button { margin-right: .5rem; margin-bottom: .5rem; }
         .status-list { display: flex; flex-wrap: wrap; gap: .4rem; }
         .status-pill { border: 1px solid #c8c8c8; border-radius: 999px; padding: .2rem .6rem; font-size: 12px; }
+        .ok { color: #217a00; }
+        .warning { color: #a76a00; }
+        .critical { color: #b30000; }
         pre { background: #f8f8f8; border-radius: 6px; padding: 1rem; overflow-x: auto; max-height: 320px; }
         table { width: 100%; border-collapse: collapse; }
         td, th { border: 1px solid #ececec; padding: .35rem; text-align: left; }
-        .map-grid { display: grid; gap: 1rem; grid-template-columns: 1.2fr 1fr; }
-        .small { font-size: 12px; color: #777; }
-        .badge { border-radius: 999px; padding: .1rem .45rem; font-size: 11px; }
-        .high { background: #e6f7e8; color: #1f7a31; }
-        .medium { background: #fff7e6; color: #996700; }
-        .low { background: #fdecec; color: #9d1e1e; }
+        .chart { display: grid; gap: .4rem; margin-top: .5rem; }
+        .bar { height: 14px; border-radius: 8px; background: #e9eef8; overflow: hidden; }
+        .bar > span { display: block; height: 100%; background: linear-gradient(90deg, #5aa3ff, #2853ff); }
     </style>
 </head>
 <body>
@@ -98,18 +98,69 @@ declare(strict_types=1);
     </div>
 </div>
 
+<div class="panel">
+    <h2>Migration Verification</h2>
+    <p><span class="ok">✔ Verified entities: <b id="verified-count">0</b></span> &nbsp; <span class="warning">⚠ Warnings: <b id="warning-count">0</b></span> &nbsp; <span class="critical">✖ Critical issues: <b id="critical-count">0</b></span></p>
+    <div class="grid">
+        <div>
+            <h3>Coverage</h3>
+            <div class="chart" id="coverage-chart"></div>
+        </div>
+        <div>
+            <h3>Integrity</h3>
+            <div class="chart" id="integrity-chart"></div>
+        </div>
+    </div>
+    <h3>Error distribution</h3>
+    <div class="chart" id="error-chart"></div>
+</div>
+
 <div class="grid">
     <div class="panel"><h2>Сверка после миграции</h2><pre id="reconciliation-report">{}</pre></div>
     <div class="panel"><h2>Конфликты</h2><pre id="conflicts-report">[]</pre></div>
+</div>
+
+
+<div class="panel">
+    <h2>Migration Assistant</h2>
+    <div class="grid">
+        <div>
+            <p><b>Overall readiness score:</b> <span id="assistant-readiness">-</span></p>
+            <p><b>Recommended load profile:</b> <span id="assistant-load">-</span></p>
+            <p><b>Next best action:</b> <span id="assistant-next">-</span></p>
+        </div>
+        <div>
+            <h3>Why this recommendation</h3>
+            <pre id="assistant-why">{}</pre>
+        </div>
+    </div>
+    <h3>Operator checklist</h3>
+    <pre id="assistant-checklist">[]</pre>
+    <button id="assistant-run-btn">Run assistant analysis</button>
+</div>
+
+<div class="panel">
+    <h2>Скачать отчеты</h2>
+    <ul>
+        <li>migration_summary.json / .csv</li>
+        <li>conflicts.json</li>
+        <li>unresolved_links.json</li>
+        <li>skipped_entities.json</li>
+        <li>delta_sync_report.json</li>
+        <li>verification_report.json</li>
+        <li>performance_report.json</li>
+        <li>certification_report.json / .html / .pdf</li>
+    </ul>
 </div>
 
 <script>
 const source = {
     users: [{id: '1', email: 'owner@x.io'}],
     tasks: [{id: '10', responsible_id: '1', created_by: '1'}],
-    crm_deals: [{id: '77', title: 'Deal', company_id: '15'}],
+    deals: [{id: '77', title: 'Deal', stage_id: 'NEW', amount: 1200, company_id: '15'}],
+    files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}],
 };
-const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [], crm_deals: [] };
+const target = { users: [{id: '1', email: 'owner@x.io'}], tasks: [{id: '10', responsible_id: '1', created_by: '1'}], deals: [{id: '77', title: 'Deal', stage_id: 'IN_PROGRESS', amount: 1200, company_id: '15'}], files: [{id: 'f1', checksum: 'abc', size: 42, mime: 'text/plain'}] };
 
 const mockAutoMap = {
   version: 1,
@@ -157,29 +208,45 @@ const renderPlan = (items) => {
     document.getElementById('migration-plan').textContent = JSON.stringify(filtered, null, 2);
 };
 
-const badge = (confidence) => `<span class="badge ${confidence}">${confidence}</span>`;
+const renderBar = (label, pct) => `<div>${label}: ${pct}%<div class="bar"><span style="width:${pct}%"></span></div></div>`;
 
-const renderAutoMap = (map) => {
-    document.getElementById('field-mapping-table').innerHTML = map.field_mappings.map((item) => `
-      <tr>
-        <td>${item.entity}.${item.source_field}</td>
-        <td><input data-source="${item.source_field}" value="${item.target_field}" /></td>
-        <td>${item.source_type} → ${item.target_type}</td>
-        <td>${badge(item.confidence)} ${item.score}</td>
-        <td>${item.transformation_rule}</td>
-        <td>${item.status}</td>
-      </tr>`).join('');
+const renderVerification = () => {
+    const entities = ['users', 'tasks', 'deals', 'files'];
+    let verified = 0;
+    let warnings = 0;
+    let critical = 0;
 
-    document.getElementById('auto-map-explain').textContent = JSON.stringify({
-      explainability: map.field_mappings.map((f) => ({pair: `${f.source_field} -> ${f.target_field}`, why: f.explain})),
-      ambiguous_cases: map.field_mappings.filter((f) => f.status !== 'auto').map((f) => `${f.source_field} -> ${f.target_field}`),
-      missing_stages: map.stage_mappings.filter((s) => s.status === 'needs_creation'),
-      incompatible_types: map.field_mappings.filter((f) => f.transformation_rule === 'incompatible' || f.transformation_rule === 'text_to_string_truncate'),
-      risks: map.conflicts,
-      manual_edits_memory: 'После правки пользователя конфиг version++ и mapping используется в следующих прогонах',
-    }, null, 2);
+    for (const entity of entities) {
+        const s = source[entity] ?? [];
+        const t = new Map((target[entity] ?? []).map((r) => [r.id, r]));
+        for (const row of s) {
+            const targetRow = t.get(row.id);
+            if (!targetRow) {
+                critical++;
+                continue;
+            }
+            if (entity === 'deals' && row.stage_id !== targetRow.stage_id) {
+                warnings++;
+            } else {
+                verified++;
+            }
+        }
+    }
 
-    document.getElementById('auto-map-coverage').textContent = JSON.stringify({summary: map.summary, dry_run: map.dry_run}, null, 2);
+    document.getElementById('verified-count').textContent = verified;
+    document.getElementById('warning-count').textContent = warnings;
+    document.getElementById('critical-count').textContent = critical;
+
+    const total = verified + warnings + critical;
+    const coverage = total ? Math.round((verified + warnings) / total * 100) : 0;
+    const integrity = total ? Math.round((verified) / total * 100) : 0;
+
+    document.getElementById('coverage-chart').innerHTML = renderBar('Verified+Warning coverage', coverage);
+    document.getElementById('integrity-chart').innerHTML = renderBar('Strict integrity', integrity);
+    document.getElementById('error-chart').innerHTML = [
+        renderBar('Warnings', total ? Math.round(warnings / total * 100) : 0),
+        renderBar('Critical', total ? Math.round(critical / total * 100) : 0)
+    ].join('');
 };
 
 document.getElementById('dry-run-btn').addEventListener('click', () => {
@@ -190,14 +257,16 @@ document.getElementById('dry-run-btn').addEventListener('click', () => {
     document.getElementById('progress-entities').textContent = '40%';
     document.getElementById('progress-stages').textContent = 'mapping';
     document.getElementById('progress-current').textContent = plan[0]?.entity_type + ':' + plan[0]?.source_id;
+    renderVerification();
 });
 
 document.getElementById('plan-filter').addEventListener('change', () => renderPlan(computePlan()));
 
 document.getElementById('delta-preview-btn').addEventListener('click', () => {
     document.getElementById('delta-preview').textContent = 'found new: 2, changed: 1, conflicts: 0';
-    document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {total_source: 1, total_target: 1, matched: 1}}, null, 2);
-    document.getElementById('conflicts-report').textContent = JSON.stringify([], null, 2);
+    document.getElementById('reconciliation-report').textContent = JSON.stringify({users: {source_count: 1, target_count: 1, status: 'OK'}, deals: {source_count: 1, target_count: 1, status: 'WARNING'}}, null, 2);
+    document.getElementById('conflicts-report').textContent = JSON.stringify([{entity: 'deals', id: '77', issue: 'stage mismatch'}], null, 2);
+    renderVerification();
 });
 
 document.getElementById('build-auto-map-btn').addEventListener('click', () => renderAutoMap(mockAutoMap));
@@ -210,6 +279,48 @@ document.getElementById('export-map-btn').addEventListener('click', () => {
     a.click();
     URL.revokeObjectURL(url);
 });
+
+
+const runAssistant = () => {
+    const snapshot = {
+        source_available: true,
+        target_available: true,
+        custom_fields_count: 175,
+        files_count: 72000,
+        relation_density: 0.69,
+        mapping_coverage: 0.86,
+        stage_mapping_coverage: 0.88,
+        unresolved_conflicts: 26,
+    };
+
+    const risk = (snapshot.files_count > 50000 ? 20 : 0)
+        + (snapshot.mapping_coverage < 0.9 ? 25 : 0)
+        + (snapshot.stage_mapping_coverage < 0.95 ? 20 : 0)
+        + (snapshot.unresolved_conflicts > 20 ? 20 : 0);
+    const readiness = Math.max(0, 100 - risk);
+    const load = risk >= 70 ? 'safe' : risk >= 40 ? 'balanced' : 'aggressive';
+
+    const checklist = [
+        'Запустить dry-run с приоритетом на mapping conflicts',
+        'Проверить stage mapping и ambiguous enum values',
+        'Вынести файлы в отдельную фазу',
+        'Подтвердить conservative healing policy для первого прохода'
+    ];
+
+    document.getElementById('assistant-readiness').textContent = readiness;
+    document.getElementById('assistant-load').textContent = load;
+    document.getElementById('assistant-next').textContent = 'Сначала dry-run, затем guided full migration';
+    document.getElementById('assistant-checklist').textContent = JSON.stringify(checklist, null, 2);
+    document.getElementById('assistant-why').textContent = JSON.stringify({
+        input_factors: snapshot,
+        rule: 'high files + low mapping coverage => isolate file phase + safe start',
+        expected_effect: 'lower source pressure and fewer quarantine entities',
+        risk_if_ignored: '429/timeout spikes and unstable reruns'
+    }, null, 2);
+};
+
+document.getElementById('assistant-run-btn').addEventListener('click', runAssistant);
+
 </script>
 </body>
 </html>
