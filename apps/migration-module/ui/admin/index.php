@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 ?><!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="utf-8">
-    <title>Bitrix24 Migration Admin</title>
+    <title>Bitrix24 Migration Admin (Scaffold)</title>
     <style>
         body { font-family: sans-serif; margin: 2rem; background: #fafafa; }
         .panel { border: 1px solid #d9d9d9; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #fff; }
@@ -27,14 +27,15 @@ declare(strict_types=1);
     </style>
 </head>
 <body>
-<h1>Migration Control Panel</h1>
+<h1>Панель управления миграцией (scaffold)</h1>
+<p><i>Интерфейс демонстрирует workflow foundation-уровня; часть действий использует mock/placeholder логику.</i></p>
 
 <div class="panel">
     <h2>Dry-run</h2>
     <p>Проходит чтение, mapping, проверки конфликтов и построение плана без записи в target.</p>
     <div class="actions">
-        <button id="dry-run-btn">Run dry-run</button>
-        <label><input id="incremental-flag" type="checkbox"> Incremental mode</label>
+        <button id="dry-run-btn">Запустить dry-run</button>
+        <label><input id="incremental-flag" type="checkbox"> Режим incremental</label>
     </div>
     <div class="kpis" id="dry-run-kpis"></div>
 </div>
@@ -93,13 +94,13 @@ declare(strict_types=1);
 
     <div class="panel">
         <h2>Дозапуск / delta sync</h2>
-        <p id="delta-preview">No preview yet</p>
+        <p id="delta-preview">Preview ещё не построен</p>
         <div class="actions"><button id="delta-preview-btn">Preview delta</button><button>Continue</button><button>Cancel</button></div>
     </div>
 </div>
 
 <div class="panel">
-    <h2>Migration Verification</h2>
+    <h2>Верификация миграции</h2>
     <p><span class="ok">✔ Verified entities: <b id="verified-count">0</b></span> &nbsp; <span class="warning">⚠ Warnings: <b id="warning-count">0</b></span> &nbsp; <span class="critical">✖ Critical issues: <b id="critical-count">0</b></span></p>
     <div class="grid">
         <div>
@@ -122,7 +123,7 @@ declare(strict_types=1);
 
 
 <div class="panel">
-    <h2>Migration Assistant</h2>
+    <h2>Migration Assistant (каркас рекомендаций)</h2>
     <div class="grid">
         <div>
             <p><b>Overall readiness score:</b> <span id="assistant-readiness">-</span></p>

@@ -1,5 +1,8 @@
 # Reconciliation Engine и Certification Report
 
+> ⚠️ Статус: документ описывает целевую/частично реализованную архитектуру foundation-этапа; часть пунктов остаётся planned/scaffold.
+
+
 ## Архитектура
 
 `ReconciliationEngineService` запускается после:

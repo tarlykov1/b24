@@ -1,5 +1,8 @@
 # Production migration guide
 
+> ⚠️ Статус: документ описывает целевую/частично реализованную архитектуру foundation-этапа; часть пунктов остаётся planned/scaffold.
+
+
 ## Production readiness checklist
 Перед запуском выполняется автоматический checklist:
 - api_available
