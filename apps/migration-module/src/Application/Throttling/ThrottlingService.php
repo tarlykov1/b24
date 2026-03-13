@@ -6,34 +6,46 @@ namespace MigrationModule\Application\Throttling;
 
 final class ThrottlingService
 {
-    /** @var array{batch_size:int,source_rpm:int,target_rpm:int,pause_between_batches_ms:int,max_retries:int,backoff_base_ms:int} */
-    private array $limits;
+    private int $requestsInWindow = 0;
+    private int $windowStartedAt;
+    private int $rpm;
 
-    public function __construct(?array $limits = null)
+    public function __construct(int $rpm = 60)
     {
-        $this->limits = $limits ?? [
-            'batch_size' => 50,
-            'source_rpm' => 30,
-            'target_rpm' => 30,
-            'pause_between_batches_ms' => 750,
-            'max_retries' => 5,
-            'backoff_base_ms' => 250,
+        $this->rpm = $rpm;
+        $this->windowStartedAt = time();
+    }
+
+    /** @return array{batch_size:int, workers:int, rpm:int, file_parallelism:int, sleep_ms:int} */
+    public function currentLimits(): array
+    {
+        return [
+            'batch_size' => 100,
+            'workers' => 1,
+            'rpm' => $this->rpm,
+            'file_parallelism' => 1,
+            'sleep_ms' => 500,
         ];
     }
 
-    /** @return array{batch_size:int,source_rpm:int,target_rpm:int,pause_between_batches_ms:int,max_retries:int,backoff_base_ms:int} */
-    public function currentLimits(): array
+    public function allowRequest(): bool
     {
-        return $this->limits;
+        if ((time() - $this->windowStartedAt) >= 60) {
+            $this->windowStartedAt = time();
+            $this->requestsInWindow = 0;
+        }
+
+        if ($this->requestsInWindow >= $this->rpm) {
+            return false;
+        }
+
+        $this->requestsInWindow++;
+
+        return true;
     }
 
-    public function pauseBetweenBatches(): void
+    public function registerErrorSignal(): void
     {
-        usleep($this->limits['pause_between_batches_ms'] * 1000);
-    }
-
-    public function backoffDelayMs(int $attempt): int
-    {
-        return $this->limits['backoff_base_ms'] * (2 ** max(0, $attempt - 1));
+        $this->rpm = max(10, $this->rpm - 5);
     }
 }

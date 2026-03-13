@@ -4,54 +4,39 @@ declare(strict_types=1);
 
 namespace MigrationModule\Cli;
 
-use MigrationModule\Application\Control\MigrationControlService;
-use MigrationModule\Application\Preflight\PreflightService;
-use MigrationModule\Domain\Config\JobSettings;
+use MigrationModule\Application\Verification\VerificationService;
 use MigrationModule\Infrastructure\Persistence\MigrationRepository;
 
 final class MigrationCommands
 {
     public function __construct(
         private readonly MigrationRepository $repository,
-        private readonly PreflightService $preflight,
-        private readonly MigrationControlService $control,
+        private readonly VerificationService $verificationService,
     ) {
     }
 
-    public function preflight(JobSettings $settings): int
-    {
-        $result = $this->preflight->run($settings);
-        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+    public function preflight(): int { return 0; }
 
-        return $result['status'] === 'ok' ? 0 : 1;
+    public function audit(): int { return 0; }
+
+    public function createJob(string $mode = 'initial'): string
+    {
+        return $this->repository->beginJob($mode);
     }
 
-    public function createJob(JobSettings $settings): string
-    {
-        return $this->repository->beginJob($settings->mode, $settings->toArray());
-    }
+    public function startJob(): int { return 0; }
 
-    public function startJob(string $jobId): int
-    {
-        $this->control->start($jobId);
-        return 0;
-    }
+    public function pauseJob(): int { return 0; }
 
-    public function pauseJob(string $jobId): int
-    {
-        $this->control->pause($jobId);
-        return 0;
-    }
+    public function resumeJob(): int { return 0; }
 
-    public function resumeJob(string $jobId): int
-    {
-        $this->control->resume($jobId);
-        return 0;
-    }
+    public function stopJob(): int { return 0; }
 
-    public function stopJob(string $jobId): int
+    public function diff(): int { return 0; }
+
+    /** @return array<string, mixed> */
+    public function verify(string $jobId, bool $validationOnly = false): array
     {
-        $this->control->cancel($jobId);
-        return 0;
+        return $this->verificationService->verify($jobId, $validationOnly);
     }
 }

@@ -4,186 +4,136 @@ declare(strict_types=1);
 
 namespace MigrationModule\Infrastructure\Persistence;
 
-use MigrationModule\Domain\Job\JobLifecycle;
+use DateTimeImmutable;
 
 final class MigrationRepository
 {
-    /** @var array{jobs:array<int,array<string,mixed>>,queue:array<int,array<string,mixed>>,mapping:array<string,string>,checkpoints:array<string,array<string,mixed>>,logs:array<int,array<string,mixed>>,diffs:array<int,array<string,mixed>>,metrics:array<string,array<string,int|float>>} */
-    private array $state;
+    /** @var array<string, array<string, mixed>> */
+    private array $jobs = [];
 
-    public function __construct(private readonly string $stateFile = '/tmp/b24_migration_state.json')
-    {
-        $this->state = $this->load();
-    }
+    /** @var array<string, array<string, array<int, array<string, mixed>>>> */
+    private array $snapshots = [];
 
-    /** @param array<string,mixed> $settings */
-    public function beginJob(string $mode, array $settings): string
+    /** @var array<string, array<string, string>> */
+    private array $mappings = [];
+
+    /** @var array<string, array<int, array<string, mixed>>> */
+    private array $reports = [];
+
+    /** @var array<string, array<int, array<string, mixed>>> */
+    private array $checkpoints = [];
+
+    public function beginJob(string $mode): string
     {
-        $id = (string) (\count($this->state['jobs']) + 1);
-        $this->state['jobs'][(int) $id] = [
-            'id' => $id,
+        $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
+        $this->jobs[$jobId] = [
+            'id' => $jobId,
             'mode' => $mode,
-            'status' => JobLifecycle::QUEUED,
-            'settings' => $settings,
-            'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
-            'updated_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+            'status' => 'ready',
+            'started_at' => new DateTimeImmutable(),
+            'ended_at' => null,
+            'metrics' => [
+                'processed' => 0,
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => 0,
+                'batch_avg_ms' => 0.0,
+                'api_requests' => 0,
+                'retries' => 0,
+            ],
+            'destructive_confirmed' => false,
+            'change_log' => [],
         ];
-        $this->flush();
 
-        return $id;
+        return $jobId;
     }
 
-    /** @return array<string,mixed>|null */
-    public function getJob(string $jobId): ?array
+    /** @param array<string, array<int, array<string, mixed>>> $source */
+    public function setSourceSnapshot(string $jobId, array $source): void
     {
-        return $this->state['jobs'][(int) $jobId] ?? null;
+        $this->snapshots[$jobId]['source'] = $source;
     }
 
-    public function updateJobStatus(string $jobId, string $status): void
+    /** @param array<string, array<int, array<string, mixed>>> $target */
+    public function setTargetSnapshot(string $jobId, array $target): void
     {
-        if (!isset($this->state['jobs'][(int) $jobId])) {
-            return;
-        }
-        $this->state['jobs'][(int) $jobId]['status'] = $status;
-        $this->state['jobs'][(int) $jobId]['updated_at'] = (new \DateTimeImmutable())->format(DATE_ATOM);
-        $this->flush();
+        $this->snapshots[$jobId]['target'] = $target;
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function allJobs(): array
+    /** @return array<string, array<int, array<string, mixed>>> */
+    public function sourceSnapshot(string $jobId): array
     {
-        return \array_values($this->state['jobs']);
+        return $this->snapshots[$jobId]['source'] ?? [];
     }
 
-    /** @param array<string,mixed> $item */
-    public function enqueue(string $jobId, array $item): bool
+    /** @return array<string, array<int, array<string, mixed>>> */
+    public function targetSnapshot(string $jobId): array
     {
-        foreach ($this->state['queue'] as $row) {
-            if ($row['job_id'] === $jobId && $row['dedupe_key'] === $item['dedupe_key']) {
-                return false;
-            }
-        }
-
-        $this->state['queue'][] = $item + ['job_id' => $jobId, 'status' => 'queued', 'attempt_count' => 0];
-        $this->flush();
-
-        return true;
+        return $this->snapshots[$jobId]['target'] ?? [];
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function reserveQueue(string $jobId, int $limit): array
+    public function saveMapping(string $jobId, string $entityType, int|string $oldId, int|string $newId): void
     {
-        $reserved = [];
-        foreach ($this->state['queue'] as $idx => $row) {
-            if ($row['job_id'] !== $jobId || $row['status'] !== 'queued') {
-                continue;
-            }
-            $this->state['queue'][$idx]['status'] = 'running';
-            $reserved[] = $this->state['queue'][$idx];
-            if (\count($reserved) >= $limit) {
-                break;
-            }
-        }
-        $this->flush();
-
-        return $reserved;
+        $this->mappings[$jobId][sprintf('%s:%s', $entityType, (string) $oldId)] = (string) $newId;
     }
 
-    public function completeQueueItem(string $jobId, string $dedupeKey): void
+    public function findMappedId(string $jobId, string $entityType, int|string $oldId): ?string
     {
-        foreach ($this->state['queue'] as $idx => $row) {
-            if ($row['job_id'] === $jobId && $row['dedupe_key'] === $dedupeKey) {
-                $this->state['queue'][$idx]['status'] = 'done';
-            }
-        }
-        $this->flush();
+        return $this->mappings[$jobId][sprintf('%s:%s', $entityType, (string) $oldId)] ?? null;
     }
 
-    public function putMapping(string $jobId, string $entityType, string $sourceId, string $targetId): void
+    /** @return array<string, string> */
+    public function mappings(string $jobId): array
     {
-        $this->state['mapping'][$this->mappingKey($jobId, $entityType, $sourceId)] = $targetId;
-        $this->flush();
+        return $this->mappings[$jobId] ?? [];
     }
 
-    public function getMapping(string $jobId, string $entityType, string $sourceId): ?string
+    /** @param array<string, mixed> $report */
+    public function saveReport(string $jobId, array $report): void
     {
-        return $this->state['mapping'][$this->mappingKey($jobId, $entityType, $sourceId)] ?? null;
+        $this->reports[$jobId][] = $report;
     }
 
-    public function saveCheckpoint(string $jobId, string $scope, string $value, array $meta = []): void
+    /** @return array<int, array<string, mixed>> */
+    public function reports(string $jobId): array
     {
-        $this->state['checkpoints'][$jobId . ':' . $scope] = ['value' => $value, 'meta' => $meta];
-        $this->flush();
+        return $this->reports[$jobId] ?? [];
     }
 
-    /** @return array{value:string,meta:array<string,mixed>}|null */
-    public function getCheckpoint(string $jobId, string $scope): ?array
+    /** @param array<string, mixed> $checkpoint */
+    public function saveCheckpoint(string $jobId, array $checkpoint): void
     {
-        return $this->state['checkpoints'][$jobId . ':' . $scope] ?? null;
+        $this->checkpoints[$jobId][] = $checkpoint;
     }
 
-    /** @param array<string,mixed> $log */
-    public function appendLog(array $log): void
+    /** @return array<string, mixed>|null */
+    public function latestCheckpoint(string $jobId): ?array
     {
-        $this->state['logs'][] = $log;
-        $this->flush();
+        $checkpoints = $this->checkpoints[$jobId] ?? [];
+
+        return $checkpoints === [] ? null : $checkpoints[array_key_last($checkpoints)];
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function logsByJob(string $jobId): array
+    public function markDestructiveConfirmed(string $jobId): void
     {
-        return \array_values(\array_filter($this->state['logs'], static fn (array $l): bool => ($l['job_id'] ?? null) === $jobId));
+        $this->jobs[$jobId]['destructive_confirmed'] = true;
     }
 
-    /** @param array<string,mixed> $diff */
-    public function saveDiff(string $jobId, array $diff): void
+    public function isDestructiveConfirmed(string $jobId): bool
     {
-        $this->state['diffs'][] = $diff + ['job_id' => $jobId];
-        $this->flush();
+        return (bool) ($this->jobs[$jobId]['destructive_confirmed'] ?? false);
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function diffsByJob(string $jobId): array
+    /** @param array<string, mixed> $log */
+    public function appendChangeLog(string $jobId, array $log): void
     {
-        return \array_values(\array_filter($this->state['diffs'], static fn (array $d): bool => ($d['job_id'] ?? null) === $jobId));
+        $this->jobs[$jobId]['change_log'][] = $log;
     }
 
-    public function incrementMetric(string $jobId, string $metric, int|float $value): void
+    /** @return array<int, array<string, mixed>> */
+    public function changeLog(string $jobId): array
     {
-        if (!isset($this->state['metrics'][$jobId])) {
-            $this->state['metrics'][$jobId] = [];
-        }
-        $this->state['metrics'][$jobId][$metric] = ($this->state['metrics'][$jobId][$metric] ?? 0) + $value;
-        $this->flush();
-    }
-
-    /** @return array<string,int|float> */
-    public function metrics(string $jobId): array
-    {
-        return $this->state['metrics'][$jobId] ?? [];
-    }
-
-    /** @return array{jobs:array<int,array<string,mixed>>,queue:array<int,array<string,mixed>>,mapping:array<string,string>,checkpoints:array<string,array<string,mixed>>,logs:array<int,array<string,mixed>>,diffs:array<int,array<string,mixed>>,metrics:array<string,array<string,int|float>>} */
-    private function load(): array
-    {
-        if (!is_file($this->stateFile)) {
-            return ['jobs' => [], 'queue' => [], 'mapping' => [], 'checkpoints' => [], 'logs' => [], 'diffs' => [], 'metrics' => []];
-        }
-
-        $decoded = json_decode((string) file_get_contents($this->stateFile), true);
-
-        return is_array($decoded)
-            ? $decoded
-            : ['jobs' => [], 'queue' => [], 'mapping' => [], 'checkpoints' => [], 'logs' => [], 'diffs' => [], 'metrics' => []];
-    }
-
-    private function flush(): void
-    {
-        file_put_contents($this->stateFile, (string) json_encode($this->state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-    }
-
-    private function mappingKey(string $jobId, string $entityType, string $sourceId): string
-    {
-        return $jobId . ':' . $entityType . ':' . $sourceId;
+        return $this->jobs[$jobId]['change_log'] ?? [];
     }
 }
