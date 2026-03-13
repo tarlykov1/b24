@@ -183,3 +183,6 @@
 - **initial full migration**: профиль `safe`, основной прогон `initialRun=true`, затем отдельная фаза файлов.
 - **incremental sync**: прогон `initialRun=false` с high-water mark дозаливкой.
 - **repeat verification**: повторная сверка после incremental sync.
+
+## Autonomous Orchestrator Blueprint
+- Полный blueprint и кодовый каркас: `docs/autonomous-orchestrator-blueprint.md`.
