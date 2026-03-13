@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Logging;
 
+use MigrationModule\Application\I18n\BackendMessageTranslator;
 use MigrationModule\Domain\Log\LogRecord;
 use MigrationModule\Infrastructure\Persistence\MigrationRepository;
 
 final class MigrationLogger
 {
-    public function __construct(private readonly MigrationRepository $repository)
+    private BackendMessageTranslator $translator;
+
+    public function __construct(?BackendMessageTranslator $translator = null)
+    {
+        $this->translator = $translator ?? new BackendMessageTranslator();
+    }
+
+    public function log(LogRecord $record): void
     {
     }
 
@@ -31,5 +39,10 @@ final class MigrationLogger
 
         $this->repository->appendLog($row);
         error_log('[migration:' . $jobId . '] ' . $record->level . ' ' . $record->action);
+    }
+
+    public function localizeMessageCode(string $messageCode, string $locale = 'en'): string
+    {
+        return $this->translator->translate($messageCode, $locale);
     }
 }
