@@ -30,6 +30,8 @@ final class AdminController
             'batch_size' => 50,
             'delay_ms' => 300,
             'supports_rerun' => true,
+            'profiles' => ['safe', 'balanced', 'aggressive'],
+            'modes' => ['dry_run', 'initial_full_migration', 'incremental_sync', 'repeat_verification'],
             'exports' => ['json', 'csv', 'html'],
         ];
     }

@@ -14,7 +14,7 @@ final class JobStateService
 
     public function checkpoint(string $jobId, string $scope, string $value, array $meta = []): void
     {
-        $this->repository->saveCheckpoint($jobId, $scope, $value, $meta);
+        $this->repository->saveCheckpoint($jobId, ['scope' => $scope, 'value' => $value, 'meta' => $meta]);
     }
 
     /** @return array{value:string,meta:array<string,mixed>}|null */
