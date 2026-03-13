@@ -1,0 +1,122 @@
+-- Migration toolkit schema (MySQL/MariaDB compatible)
+
+CREATE TABLE IF NOT EXISTS migration_job (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    mode VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    config_json JSON NOT NULL,
+    source_checkpoint VARCHAR(255) NULL,
+    started_at DATETIME NULL,
+    finished_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_job_status (status),
+    KEY idx_job_mode (mode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_entity_map (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NOT NULL,
+    preserved_source_id TINYINT(1) NOT NULL DEFAULT 0,
+    remap_reason VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_entity_map (job_id, entity_type, source_id),
+    KEY idx_entity_target (entity_type, target_id),
+    CONSTRAINT fk_entity_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_user_map (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    source_user_id BIGINT UNSIGNED NOT NULL,
+    source_login VARCHAR(255) NOT NULL,
+    source_email VARCHAR(255) NOT NULL,
+    target_user_id BIGINT UNSIGNED NOT NULL,
+    excluded_reason VARCHAR(255) NULL,
+    archived_flag TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_source (job_id, source_user_id),
+    UNIQUE KEY uq_user_email (job_id, source_email),
+    KEY idx_user_target (target_user_id),
+    CONSTRAINT fk_user_map_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_queue (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    operation VARCHAR(64) NOT NULL,
+    dedupe_key VARCHAR(191) NOT NULL,
+    payload_json JSON NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    locked_at DATETIME NULL,
+    locked_by VARCHAR(128) NULL,
+    last_error TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_queue_dedupe (job_id, dedupe_key),
+    KEY idx_queue_status_available (job_id, status, available_at),
+    CONSTRAINT fk_queue_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_log (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    level VARCHAR(16) NOT NULL,
+    channel VARCHAR(32) NOT NULL,
+    entity_type VARCHAR(64) NULL,
+    old_id VARCHAR(128) NULL,
+    new_id VARCHAR(128) NULL,
+    action VARCHAR(64) NOT NULL,
+    error_message TEXT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    execution_time_ms INT NOT NULL DEFAULT 0,
+    context_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_log_job_channel (job_id, channel),
+    KEY idx_log_entity (entity_type, old_id),
+    CONSTRAINT fk_log_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_checkpoint (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    scope VARCHAR(128) NOT NULL,
+    checkpoint_value VARCHAR(255) NOT NULL,
+    checkpoint_meta_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_checkpoint_scope (job_id, scope),
+    CONSTRAINT fk_checkpoint_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_diff (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NULL,
+    category VARCHAR(64) NOT NULL,
+    diff_json JSON NULL,
+    requires_manual_review TINYINT(1) NOT NULL DEFAULT 0,
+    resolution_status VARCHAR(32) NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_diff_job_category (job_id, category),
+    KEY idx_diff_entity (entity_type, source_id),
+    CONSTRAINT fk_diff_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

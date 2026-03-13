@@ -1,0 +1,13 @@
+{
+  "name": "migration/bitrix24-toolkit",
+  "type": "project",
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "ExportAgent\\": "apps/export-agent/src/",
+      "MigrationModule\\": "apps/migration-module/src/"
+    }
+  }
+}
