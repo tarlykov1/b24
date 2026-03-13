@@ -29,6 +29,15 @@ final class MigrationRepository
     /** @var array<string, string> */
     private array $syncCheckpoints = [];
 
+    /** @var array<string, array<string, array<string, mixed>>> */
+    private array $identityMappings = [];
+
+    /** @var array<string, array<string, mixed>> */
+    private array $queueStates = [];
+
+    /** @var array<string, string> */
+    private array $highWaterMarks = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -166,6 +175,65 @@ final class MigrationRepository
         return $this->syncCheckpoints[$entityType] ?? null;
     }
 
+    /** @param array<string,mixed> $meta */
+    public function saveIdentityMapping(
+        string $jobId,
+        string $entityType,
+        int|string $sourceId,
+        int|string $targetId,
+        string $matchMethod,
+        string $migrationVersion,
+        ?string $signature,
+        ?string $lastSyncedAt,
+        array $meta = [],
+    ): void {
+        $key = sprintf('%s:%s', $entityType, (string) $sourceId);
+        $this->identityMappings[$jobId][$key] = [
+            'entity_type' => $entityType,
+            'source_id' => (string) $sourceId,
+            'target_id' => (string) $targetId,
+            'match_method' => $matchMethod,
+            'migration_version' => $migrationVersion,
+            'signature' => $signature,
+            'last_synced_at' => $lastSyncedAt,
+            'meta' => $meta,
+        ];
+    }
+
+    /** @return array<string,mixed>|null */
+    public function findIdentityMapping(string $jobId, string $entityType, int|string $sourceId): ?array
+    {
+        return $this->identityMappings[$jobId][sprintf('%s:%s', $entityType, (string) $sourceId)] ?? null;
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    public function identityMappings(string $jobId): array
+    {
+        return $this->identityMappings[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $state */
+    public function saveQueueState(string $jobId, string $queueName, array $state): void
+    {
+        $this->queueStates[$jobId . ':' . $queueName] = $state;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function queueState(string $jobId, string $queueName): ?array
+    {
+        return $this->queueStates[$jobId . ':' . $queueName] ?? null;
+    }
+
+    public function saveHighWaterMark(string $entityType, string $value): void
+    {
+        $this->highWaterMarks[$entityType] = $value;
+    }
+
+    public function highWaterMark(string $entityType): ?string
+    {
+        return $this->highWaterMarks[$entityType] ?? null;
+    }
+
     public function setJobStatus(string $jobId, string $status): void
     {
         $this->jobs[$jobId]['status'] = $status;
@@ -193,6 +261,37 @@ final class MigrationRepository
     public function clearCheckpoints(string $jobId): void
     {
         $this->checkpoints[$jobId] = [];
+    }
+
+    /** @return array{value:string,meta:array<string,mixed>}|null */
+    public function getCheckpoint(string $jobId, string $scope): ?array
+    {
+        $items = $this->checkpoints[$jobId] ?? [];
+        for ($i = count($items) - 1; $i >= 0; --$i) {
+            if (($items[$i]['scope'] ?? null) === $scope) {
+                return [
+                    'value' => (string) ($items[$i]['value'] ?? ''),
+                    'meta' => (array) ($items[$i]['meta'] ?? []),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array<string,int|float> */
+    public function metrics(string $jobId): array
+    {
+        return $this->jobs[$jobId]['metrics'] ?? [];
+    }
+
+    public function incrementMetric(string $jobId, string $metric, int|float $value = 1): void
+    {
+        if (!isset($this->jobs[$jobId]['metrics'][$metric])) {
+            $this->jobs[$jobId]['metrics'][$metric] = 0;
+        }
+
+        $this->jobs[$jobId]['metrics'][$metric] += $value;
     }
 
 }

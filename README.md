@@ -164,3 +164,22 @@
 - `bin/migration-module` — CLI-команды: `migration start|pause|resume|status|verify|dry-run|delta-sync|cutover|rollback|report`.
 
 Подробный production runbook: `docs/production-migration-guide.md`.
+
+
+## Этап 9: масштабирование для миллионов сущностей
+
+Реализован большой этап масштабирования и устойчивости:
+- dependency-aware DAG-планировщик этапов (`MigrationStagePlanner`);
+- queue/chunk/batch оркестратор с checkpoint/resume (`ScalableMigrationOrchestrator`);
+- adaptive throttling с раздельными лимитами source/target/heavy и профилями `safe|balanced|aggressive` (`AdaptiveRateLimiter`);
+- high-water mark и incremental sync (`HighWaterMarkSyncService`);
+- identity mapping v2 (метод матчинга, версия, сигнатура, статус последней синхронизации);
+- расширенный monitoring dashboard (throughput, lag, rate-limit hits, memory/worker usage, success ratio, reconciliation coverage);
+- обновлённый runtime config (`migration.config.yml`) для больших нагрузок.
+
+Подробная документация: `docs/scalable-migration-architecture.md`.
+
+### Быстрый сценарий запуска
+- **initial full migration**: профиль `safe`, основной прогон `initialRun=true`, затем отдельная фаза файлов.
+- **incremental sync**: прогон `initialRun=false` с high-water mark дозаливкой.
+- **repeat verification**: повторная сверка после incremental sync.

@@ -15,9 +15,9 @@ final class ThrottlingService
     public function __construct(string $profile = 'balanced')
     {
         $this->rpm = match ($profile) {
-            'conservative' => 20,
-            'fast' => 80,
-            default => 40,
+            'safe' => 20,
+            'aggressive' => 55,
+            default => 35,
         };
         $this->windowStartedAt = time();
     }
