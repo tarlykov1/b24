@@ -4,19 +4,34 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Queue;
 
+use MigrationModule\Application\Throttling\ThrottlingService;
 use MigrationModule\Domain\Queue\QueueItem;
+use SplQueue;
 
 final class QueueService
 {
+    /** @var SplQueue<QueueItem> */
+    private SplQueue $queue;
+
+    public function __construct(private readonly ThrottlingService $throttlingService)
+    {
+        $this->queue = new SplQueue();
+    }
+
     public function enqueue(QueueItem $item): void
     {
-        // TODO: persist queue item with idempotent dedupe key.
+        $this->queue->enqueue($item);
     }
 
     /** @return array<int, QueueItem> */
     public function reserve(string $jobId, int $limit): array
     {
-        // TODO: reserve available queue records for worker.
-        return [];
+        $reserved = [];
+        while (!$this->queue->isEmpty() && count($reserved) < $limit) {
+            $this->throttlingService->throttle();
+            $reserved[] = $this->queue->dequeue();
+        }
+
+        return $reserved;
     }
 }

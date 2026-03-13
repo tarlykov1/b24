@@ -6,20 +6,27 @@ namespace MigrationModule\Application\Throttling;
 
 final class ThrottlingService
 {
-    /** @return array{batch_size:int, workers:int, rpm:int, file_parallelism:int, sleep_ms:int} */
-    public function currentLimits(): array
+    private int $rpm = 60;
+    private int $lastRequestAt = 0;
+
+    public function currentRpm(): int
     {
-        return [
-            'batch_size' => 100,
-            'workers' => 1,
-            'rpm' => 60,
-            'file_parallelism' => 1,
-            'sleep_ms' => 500,
-        ];
+        return $this->rpm;
+    }
+
+    public function throttle(): void
+    {
+        $intervalMs = (int) floor(60000 / max(1, $this->rpm));
+        $elapsedMs = (int) floor((microtime(true) * 1000) - $this->lastRequestAt);
+        if ($this->lastRequestAt > 0 && $elapsedMs < $intervalMs) {
+            usleep(($intervalMs - $elapsedMs) * 1000);
+        }
+
+        $this->lastRequestAt = (int) floor(microtime(true) * 1000);
     }
 
     public function registerErrorSignal(): void
     {
-        // TODO: adaptive slowdown policy.
+        $this->rpm = max(10, $this->rpm - 5);
     }
 }
