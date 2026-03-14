@@ -65,6 +65,15 @@ if (is_file(__DIR__ . '/../../../../.audit/migration_profile.json')) {
   <li>Risk summary: <b><?= htmlspecialchars((string) ($auditProfile['raw']['summary']['risk_level'] ?? 'UNKNOWN')) ?></b></li>
 </ul>
 <p><a href="../../../../.audit/report.html" target="_blank">Open HTML audit report</a> | <a href="api.php/audit/summary">API risk summary</a></p>
+
+<h3>Attachment / Linkage Risks</h3>
+<ul>
+  <li>Tasks containing files: <b><?= (int) ($auditProfile['linkage']['tasks_with_attachments'] ?? 0) ?></b></li>
+  <li>Comments containing files: <b><?= (int) ($auditProfile['linkage']['tasks_with_comment_attachments'] ?? 0) ?></b></li>
+  <li>Multi-linked files: <b><?= (int) ($auditProfile['linkage']['multi_linked_files'] ?? 0) ?></b></li>
+  <li>Orphan linkage references: <b><?= (int) ($auditProfile['linkage']['orphan_attachment_references'] ?? 0) ?></b></li>
+  <li>Recommended migration mode: <b><?= htmlspecialchars((string) ($auditProfile['linkage']['recommended_attachment_strategy'] ?? 'unknown'), ENT_QUOTES) ?></b></li>
+</ul>
 <?php else: ?>
 <p>No audit profile yet. Run <code>php bin/migration-module audit:run</code>.</p>
 <?php endif; ?>

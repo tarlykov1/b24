@@ -25,13 +25,13 @@ final class AuditDiscoveryService
     ) {
     }
 
-    public function run(string $section = 'run'): array
+    public function run(string $section = 'run', bool $deep = false): array
     {
         $pdo = $this->buildReadonlyPdo();
         $client = $this->buildRestClient();
         $uploadPath = (string) $this->env('BITRIX_UPLOAD_PATH', '/upload');
 
-        $db = $this->dbInspector->inspect($pdo);
+        $db = $this->dbInspector->inspect($pdo, $deep);
         $fs = $this->filesystemInspector->inspect($uploadPath);
         $rest = $this->restInspector->inspect($client);
 
@@ -41,6 +41,7 @@ final class AuditDiscoveryService
         $files = $this->filesAudit($db, $fs);
         $crm = $this->crmAudit($db, $rest);
         $permissions = $this->permissionsAudit($db);
+        $linkage = $this->linkageAudit($db);
 
         $profile = [
             'generated_at' => (new DateTimeImmutable())->format(DATE_ATOM),
@@ -50,6 +51,7 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'linkage' => $linkage,
         ];
 
         $summary = $this->riskEngine->analyze([
@@ -57,6 +59,7 @@ final class AuditDiscoveryService
             'tasks' => $tasks,
             'files' => $files,
             'permissions' => $permissions,
+            'linkage' => $linkage,
         ]);
         $strategyHints = $this->strategyHintEngine->build($profile, $summary);
 
@@ -73,10 +76,12 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'linkage' => $linkage,
             'summary' => $summary,
             'strategy_hints' => $strategyHints,
             'readiness_score' => $this->readinessScore($summary),
             'sources' => ['db' => $db['available'] ?? false, 'fs' => $fs['available'] ?? false, 'rest' => $rest['available'] ?? false],
+            'deep_mode' => $deep,
         ];
 
         if (in_array($section, ['run', 'report'], true)) {
@@ -90,6 +95,7 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'linkage' => $linkage,
             'summary' => $summary,
             'report' => ['report' => '.audit/report.html', 'profile' => '.audit/migration_profile.json'],
             default => $result,
@@ -171,6 +177,24 @@ final class AuditDiscoveryService
         ];
     }
 
+
+    private function linkageAudit(array $db): array
+    {
+        $linkage = (array) ($db['linkage'] ?? []);
+
+        return [
+            'tasks_with_attachments' => (int) ($linkage['tasks_with_attachments'] ?? 0),
+            'tasks_with_comment_attachments' => (int) ($linkage['tasks_with_comment_attachments'] ?? 0),
+            'files_multi_linked' => (int) ($linkage['files_multi_linked'] ?? 0),
+            'orphan_attachment_references' => (int) ($linkage['orphan_attachment_references'] ?? 0),
+            'disk_objects_without_attached_context' => (int) ($linkage['disk_objects_without_attached_context'] ?? 0),
+            'average_attachments_per_task' => (float) ($linkage['average_attachments_per_task'] ?? 0.0),
+            'attachment_type_distribution' => (array) ($linkage['attachment_type_distribution'] ?? []),
+            'attachments_per_task_top' => (array) ($linkage['attachments_per_task_top'] ?? []),
+            'raw' => $linkage,
+        ];
+    }
+
     private function crmAudit(array $db, array $rest): array
     {
         return [
@@ -218,6 +242,13 @@ final class AuditDiscoveryService
             ],
             'files' => [
                 'total_size_gb' => $result['files']['total_size_gb'] ?? 0,
+            ],
+            'linkage' => [
+                'tasks_with_attachments' => $result['linkage']['tasks_with_attachments'] ?? 0,
+                'tasks_with_comment_attachments' => $result['linkage']['tasks_with_comment_attachments'] ?? 0,
+                'multi_linked_files' => $result['linkage']['files_multi_linked'] ?? 0,
+                'orphan_attachment_references' => $result['linkage']['orphan_attachment_references'] ?? 0,
+                'recommended_attachment_strategy' => ((bool) ($result['strategy_hints']['file_migration_strategy']['metadata_first'] ?? false)) ? 'metadata_first_then_rebind' : 'inline_attachment_copy',
             ],
             'migration_strategy' => [
                 'files_separate_pipeline' => (($result['strategy_hints']['files_strategy'] ?? '') === 'separate_bulk_transfer'),

@@ -18,6 +18,7 @@ php bin/migration-module audit:tasks
 php bin/migration-module audit:files
 php bin/migration-module audit:crm
 php bin/migration-module audit:permissions
+php bin/migration-module audit:linkage
 php bin/migration-module audit:summary
 php bin/migration-module audit:report
 php bin/migration-module audit:run
@@ -61,3 +62,37 @@ php bin/migration-module audit:run
   "migration_strategy": {"files_separate_pipeline": true}
 }
 ```
+
+## Task / File Linkage and Attachment Semantics
+
+Добавлен аудит семантики привязок:
+
+```bash
+php bin/migration-module audit:linkage
+php bin/migration-module audit:linkage --deep
+```
+
+`audit:linkage` анализирует не только объёмы, но и граф связей между `tasks`, `task_comments`, `b_file`, `b_disk_object`, `b_disk_attached_object`.
+
+Классифицируются типы привязок и источники:
+- task direct attachment
+- task comment attachment
+- disk attached object
+- legacy / orphan references
+
+Проверяются риски:
+- orphan attachment references
+- disk object без attached context
+- multi-linked files (один файл в нескольких контекстах)
+- потеря comment attachments при миграции
+
+Почему одних counts недостаточно:
+- одинаковое число файлов может скрывать разную топологию привязок;
+- файл может быть связан с task, comment и disk context одновременно;
+- перенос бинарников без последующей привязки ломает логику задач/комментариев.
+
+Strategy hints интерпретация:
+- сначала перенос metadata, затем binary transfer;
+- отдельный pass для comment attachments;
+- reconciliation после миграции задач;
+- для multi-link: copy binary once, затем rebind many.
