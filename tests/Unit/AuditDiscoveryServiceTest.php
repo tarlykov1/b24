@@ -56,6 +56,26 @@ it('generates report artifacts on audit run', function (): void {
     @unlink($dbPath);
 });
 
+
+it('runs ownership audit and returns acl/orphan metrics', function (): void {
+    $dbPath = sys_get_temp_dir() . '/audit-fixture-' . uniqid() . '.sqlite';
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $sql = file_get_contents(__DIR__ . '/../Fixtures/audit_fixture.sql');
+    $pdo->exec((string) $sql);
+
+    putenv('BITRIX_DB_DSN=sqlite:' . $dbPath);
+    putenv('BITRIX_UPLOAD_PATH=' . __DIR__ . '/../Fixtures');
+
+    $service = new AuditDiscoveryService();
+    $ownership = $service->run('ownership');
+
+    assert(($ownership['metrics']['files_owned_by_inactive_users'] ?? 0) > 0);
+    assert(($ownership['metrics']['disk_acl_invalid_entries'] ?? 0) > 0);
+    assert(($ownership['orphans']['tasks_referencing_missing_files'] ?? 0) > 0);
+
+    @unlink($dbPath);
+});
+
 function it(string $title, callable $fn): void
 {
     $fn();
