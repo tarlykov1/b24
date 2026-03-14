@@ -61,3 +61,7 @@ composer test
 ```
 
 Проверяет: config loading, CLI/runtime smoke, dry-run/execute/resume, rerun/delta, id conflict, verify summary, user policy, schema/runtime consistency.
+
+## Web UI
+
+- [Migration Operations Console](docs/migration-operations-console.md)
