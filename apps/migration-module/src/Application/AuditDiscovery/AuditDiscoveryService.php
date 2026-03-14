@@ -41,6 +41,7 @@ final class AuditDiscoveryService
         $files = $this->filesAudit($db, $fs);
         $crm = $this->crmAudit($db, $rest);
         $permissions = $this->permissionsAudit($db);
+        $ownership = $this->ownershipAudit($db, $users, $tasks, $files);
 
         $profile = [
             'generated_at' => (new DateTimeImmutable())->format(DATE_ATOM),
@@ -50,6 +51,7 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'ownership' => $ownership,
         ];
 
         $summary = $this->riskEngine->analyze([
@@ -57,6 +59,7 @@ final class AuditDiscoveryService
             'tasks' => $tasks,
             'files' => $files,
             'permissions' => $permissions,
+            'ownership' => $ownership,
         ]);
         $strategyHints = $this->strategyHintEngine->build($profile, $summary);
 
@@ -73,6 +76,7 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'ownership' => $ownership,
             'summary' => $summary,
             'strategy_hints' => $strategyHints,
             'readiness_score' => $this->readinessScore($summary),
@@ -90,6 +94,7 @@ final class AuditDiscoveryService
             'files' => $files,
             'crm' => $crm,
             'permissions' => $permissions,
+            'ownership' => $ownership,
             'summary' => $summary,
             'report' => ['report' => '.audit/report.html', 'profile' => '.audit/migration_profile.json'],
             default => $result,
@@ -189,15 +194,86 @@ final class AuditDiscoveryService
 
     private function permissionsAudit(array $db): array
     {
+        $aclInvalidEntries = (int) ($db['acl_invalid_user_entries'] ?? 0) + (int) ($db['acl_invalid_group_entries'] ?? 0);
+        $filesInactive = (int) ($db['files_owned_by_inactive_users'] ?? 0);
+        $tasksInactive = (int) ($db['tasks_owned_by_inactive_users'] ?? 0);
+
         return [
             'groups' => (int) ($db['counts']['b_sonet_group'] ?? 0),
             'projects' => (int) ($db['counts']['b_sonet_group'] ?? 0),
             'group_disks' => (int) ($db['counts']['b_sonet_group'] ?? 0),
             'user_disks' => (int) ($db['counts']['b_disk_object'] ?? 0),
-            'acl_anomalies' => (int) ($db['orphan_disk_links'] ?? 0),
-            'files_owned_by_inactive_users' => 0,
-            'tasks_owned_by_inactive_users' => 0,
-            'inactive_owners' => 0,
+            'acl_anomalies' => $aclInvalidEntries,
+            'disk_acl_invalid_entries' => $aclInvalidEntries,
+            'acl_invalid_user_entries' => (int) ($db['acl_invalid_user_entries'] ?? 0),
+            'acl_invalid_group_entries' => (int) ($db['acl_invalid_group_entries'] ?? 0),
+            'broken_acl_inheritance' => (int) ($db['broken_acl_inheritance'] ?? 0),
+            'inherited_acl_chains' => (int) ($db['inherited_acl_chains'] ?? 0),
+            'files_owned_by_inactive_users' => $filesInactive,
+            'tasks_owned_by_inactive_users' => $tasksInactive,
+            'inactive_owners' => $filesInactive + $tasksInactive,
+        ];
+    }
+
+    private function ownershipAudit(array $db, array $users, array $tasks, array $files): array
+    {
+        return [
+            'entities' => ['tasks', 'task_comments', 'files', 'disk_objects', 'smart_process_records', 'crm_entities'],
+            'fields' => ['author', 'owner', 'responsible', 'participants', 'watchers', 'disk_owner', 'parent_disk', 'attached_entity'],
+            'missing_owners' => [
+                'tasks_without_responsible' => (int) ($db['tasks_without_responsible'] ?? 0),
+                'files_without_valid_owner' => (int) ($db['files_without_valid_owner'] ?? 0),
+                'comments_with_missing_author' => (int) ($db['task_comments_missing_author'] ?? 0),
+            ],
+            'inactive_owners' => [
+                'files_owned_by_inactive_users' => (int) ($db['files_owned_by_inactive_users'] ?? 0),
+                'tasks_owned_by_inactive_users' => (int) ($db['tasks_owned_by_inactive_users'] ?? 0),
+                'disk_folders_owned_by_inactive_users' => (int) ($db['disk_folders_owned_by_inactive_users'] ?? 0),
+            ],
+            'scope_risks' => [
+                'users_policy' => 'active_only',
+                'ownership_risk' => ((int) ($db['files_owned_by_inactive_users'] ?? 0)) > 0 || ((int) ($db['tasks_owned_by_inactive_users'] ?? 0)) > 0,
+            ],
+            'acl_graph' => [
+                'invalid_entries' => (int) ($db['acl_invalid_user_entries'] ?? 0) + (int) ($db['acl_invalid_group_entries'] ?? 0),
+                'missing_users' => (int) ($db['acl_invalid_user_entries'] ?? 0),
+                'deleted_groups' => (int) ($db['acl_invalid_group_entries'] ?? 0),
+                'inherited_acl_chains' => (int) ($db['inherited_acl_chains'] ?? 0),
+                'broken_acl_inheritance' => (int) ($db['broken_acl_inheritance'] ?? 0),
+            ],
+            'disk_structure' => [
+                'user_disks' => (int) ($db['counts']['b_disk_object'] ?? 0),
+                'group_project_disks' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+                'task_attachments' => (int) ($db['tasks_with_attachments'] ?? 0),
+                'smart_process_attachments' => 0,
+                'files_per_storage' => (array) ($db['disk_files_per_storage'] ?? []),
+                'folders_per_storage' => (array) ($db['disk_folders_per_storage'] ?? []),
+                'ownership_distribution' => (array) ($db['file_ownership_by_user'] ?? []),
+            ],
+            'orphans' => [
+                'files_without_parent_disk_object' => (int) ($db['files_without_parent_disk_object'] ?? 0),
+                'disk_objects_without_physical_file' => (int) ($db['disk_objects_without_physical_file'] ?? 0),
+                'files_attached_to_missing_entities' => (int) ($db['files_attached_to_missing_entities'] ?? 0),
+                'tasks_referencing_missing_files' => (int) ($db['tasks_referencing_missing_files'] ?? 0),
+                'files_referencing_missing_tasks' => (int) ($db['tasks_referencing_missing_files'] ?? 0),
+            ],
+            'metrics' => [
+                'files_owned_by_inactive_users' => (int) ($db['files_owned_by_inactive_users'] ?? 0),
+                'tasks_owned_by_inactive_users' => (int) ($db['tasks_owned_by_inactive_users'] ?? 0),
+                'disk_acl_invalid_entries' => (int) ($db['acl_invalid_user_entries'] ?? 0) + (int) ($db['acl_invalid_group_entries'] ?? 0),
+                'files_without_valid_owner' => (int) ($db['files_without_valid_owner'] ?? 0),
+                'orphan_files' => (int) ($files['orphan_files'] ?? 0),
+            ],
+            'charts' => [
+                'ownership_distribution' => (array) ($db['file_ownership_by_user'] ?? []),
+                'file_ownership_by_user' => (array) ($db['file_ownership_by_user'] ?? []),
+                'tasks_by_responsible_user' => (array) ($db['tasks_by_responsible_user'] ?? []),
+            ],
+            'totals' => [
+                'users' => (int) ($users['total'] ?? 0),
+                'tasks' => (int) ($tasks['total'] ?? 0),
+                'files' => (int) ($files['total'] ?? 0),
+            ],
         ];
     }
 
@@ -218,6 +294,11 @@ final class AuditDiscoveryService
             ],
             'files' => [
                 'total_size_gb' => $result['files']['total_size_gb'] ?? 0,
+            ],
+            'ownership' => [
+                'files_owned_by_inactive_users' => $result['ownership']['metrics']['files_owned_by_inactive_users'] ?? 0,
+                'tasks_owned_by_inactive_users' => $result['ownership']['metrics']['tasks_owned_by_inactive_users'] ?? 0,
+                'orphan_files' => $result['ownership']['metrics']['orphan_files'] ?? 0,
             ],
             'migration_strategy' => [
                 'files_separate_pipeline' => (($result['strategy_hints']['files_strategy'] ?? '') === 'separate_bulk_transfer'),
@@ -278,7 +359,6 @@ final class AuditDiscoveryService
 
         return round($bytes / (1024 ** $pow), 2) . ' ' . $units[$pow];
     }
-
 
     private function env(string $name, string $default): string
     {
