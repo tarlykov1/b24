@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+use MigrationModule\ControlCenter\Controller\JobController;
+use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 use MigrationModule\Prototype\ConfigLoader;
@@ -35,7 +37,7 @@ function out(array $payload, int $code = 0): never {
 }
 
 $command = $argv[1] ?? 'help';
-$configPath = $argv[2] ?? 'migration.config.yml';
+$configPath = $command === 'migration' ? ($argv[5] ?? 'migration.config.yml') : ($argv[2] ?? 'migration.config.yml');
 
 try {
     $config = (new ConfigLoader())->load($configPath);
@@ -51,7 +53,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
@@ -60,6 +62,32 @@ try {
 
     $storage->initSchema();
     $jobId = $argv[3] ?? $storage->createJob($command);
+
+    if ($command === 'migration') {
+        $jobController = new JobController($storage->pdo());
+        $diffEngine = new DiffEngine();
+        $sub = $argv[2] ?? 'help';
+        $jobForCommand = $argv[3] ?? $jobId;
+
+        switch ($sub) {
+            case 'pause':
+                out($jobController->pause($jobForCommand));
+            case 'resume':
+                out($jobController->resume($jobForCommand));
+            case 'retry':
+                $entityRef = $argv[4] ?? '';
+                [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
+                out($jobController->retryEntity($jobForCommand, $entityType, $sourceId));
+            case 'repair':
+                out(['command' => 'migration repair', 'status' => 'queued']);
+            case 'diff':
+                $entityRef = $argv[4] ?? '';
+                [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
+                out($diffEngine->compare($entityType, $sourceId, ['id' => $sourceId], ['id' => $sourceId]));
+            default:
+                out(['error' => 'Unknown migration subcommand', 'subcommand' => $sub], 1);
+        }
+    }
 
     switch ($command) {
         case 'plan':
