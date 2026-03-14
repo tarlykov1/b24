@@ -3,8 +3,11 @@
 
 declare(strict_types=1);
 
+use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
+use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
+use MigrationModule\Prototype\Adapter\BitrixRestAdapter;
 use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 use MigrationModule\Prototype\ConfigLoader;
@@ -43,17 +46,27 @@ try {
     $config = (new ConfigLoader())->load($configPath);
     $storagePath = (string) (($config['storage']['path'] ?? '.prototype/migration.sqlite'));
     $storage = new SqliteStorage($storagePath);
+
+    $sourceAdapter = new StubSourceAdapter();
+    $targetAdapter = new StubTargetAdapter();
+    if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '')) {
+        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
+        $restAdapter = new BitrixRestAdapter($client);
+        $sourceAdapter = $restAdapter;
+        $targetAdapter = $restAdapter;
+    }
+
     $runtime = new PrototypeRuntime(
         $storage,
-        new StubSourceAdapter(),
-        new StubTargetAdapter(),
+        $sourceAdapter,
+        $targetAdapter,
         new IdConflictResolutionPolicy(),
         new UserHandlingPolicy(),
         $config,
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
@@ -107,6 +120,12 @@ try {
         case 'report':
         case 'status':
             out(['job_id' => $jobId, 'summary' => $storage->summary($jobId)]);
+        case 'system:check':
+            $client = null;
+            if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '')) {
+                $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
+            }
+            out((new SystemCheckService($client))->check($storagePath));
         default:
             out(['error' => 'Unknown command', 'command' => $command], 1);
     }

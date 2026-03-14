@@ -94,6 +94,23 @@ final class SqliteStorage
         $stmt->execute(['job_id' => $jobId, 'level' => $level, 'message' => $message]);
     }
 
+
+    public function saveStructuredLog(string $jobId, string $level, string $entityType, string $entityId, string $action, string $result, float $duration, ?string $error = null): void
+    {
+        $payload = [
+            'timestamp' => date(DATE_ATOM),
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'action' => $action,
+            'result' => $result,
+            'duration' => round($duration, 4),
+            'error' => $error,
+        ];
+
+        $this->saveLog($jobId, $level, json_encode($payload, JSON_UNESCAPED_UNICODE));
+    }
+
     public function saveDiff(string $jobId, string $entityType, string $sourceId, string $category, string $detail): void
     {
         $stmt = $this->pdo->prepare('INSERT INTO diff(job_id, entity_type, source_id, category, detail) VALUES(:job_id,:entity_type,:source_id,:category,:detail)');

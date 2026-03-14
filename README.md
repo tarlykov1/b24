@@ -65,3 +65,10 @@ composer test
 ## Web UI
 
 - [Migration Operations Console](docs/migration-operations-console.md)
+
+
+## Production hardening additions
+- Real Bitrix REST adapter is auto-enabled via `BITRIX_WEBHOOK_URL` + `BITRIX_WEBHOOK_TOKEN`.
+- New command: `php bin/migration-module system:check`.
+- Admin API now requires login + CSRF and exposes `/health` and `/ready`.
+- Config split added under `config/migration.php`, `config/runtime.php`, `config/bitrix.php`.
