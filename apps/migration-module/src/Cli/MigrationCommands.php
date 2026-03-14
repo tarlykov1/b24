@@ -5,6 +5,13 @@ declare(strict_types=1);
 namespace MigrationModule\Cli;
 
 use MigrationModule\Application\Checkpoint\CheckpointService;
+use MigrationModule\Application\Consistency\ConflictDetectionEngine;
+use MigrationModule\Application\Consistency\DeltaSyncEngine;
+use MigrationModule\Application\Consistency\FileReconciliationService;
+use MigrationModule\Application\Consistency\ReconciliationQueueService;
+use MigrationModule\Application\Consistency\RelationIntegrityEngine;
+use MigrationModule\Application\Consistency\SnapshotConsistencyService;
+use MigrationModule\Application\Consistency\SyncPolicyEngine;
 use MigrationModule\Application\Config\ProductionConfigService;
 use MigrationModule\Application\Cutover\CutoverService;
 use MigrationModule\Application\Monitoring\MonitoringDashboardService;
@@ -34,11 +41,134 @@ final class MigrationCommands
         private readonly ProductionConfigService $configService,
         private readonly MonitoringDashboardService $dashboardService,
         private readonly ProductionReadinessChecklistService $readinessChecklist,
+        private readonly ?SnapshotConsistencyService $snapshotService = null,
+        private readonly ?ReconciliationQueueService $reconciliationQueue = null,
+        private readonly ?DeltaSyncEngine $deltaEngine = null,
+        private readonly ?RelationIntegrityEngine $relationIntegrityEngine = null,
+        private readonly ?FileReconciliationService $fileReconciliationService = null,
+        private readonly ?ConflictDetectionEngine $conflictEngine = null,
+        private readonly ?SyncPolicyEngine $syncPolicyEngine = null,
     ) {
     }
 
     public function preflight(): int { return 0; }
 
+
+    /** @param array<string,mixed> $sourceMarkers */
+    public function snapshotCreate(string $jobId, array $sourceMarkers = []): array
+    {
+        return ($this->snapshotService ?? new SnapshotConsistencyService($this->repository))->createSnapshot($jobId, $sourceMarkers);
+    }
+
+    public function snapshotShow(string $jobId): ?array
+    {
+        return $this->repository->snapshot($jobId);
+    }
+
+    /** @param array<int,array<string,mixed>> $records */
+    public function baselinePlan(string $jobId, string $entityType, array $records): array
+    {
+        $snapshot = $this->repository->snapshot($jobId);
+        $cutoff = (string) ($snapshot['source_cutoff_time'] ?? '1970-01-01T00:00:00+00:00');
+
+        $baseline = array_values(array_filter($records, static function (array $row) use ($cutoff): bool {
+            $updatedAt = (string) ($row['updated_at'] ?? $row['modified_at'] ?? $row['created_at'] ?? '');
+
+            return $updatedAt === '' || strtotime($updatedAt) <= strtotime($cutoff);
+        }));
+
+        return ['job_id' => $jobId, 'entity_type' => $entityType, 'cutoff' => $cutoff, 'baseline_size' => count($baseline), 'items' => $baseline];
+    }
+
+    /** @param array<int,array<string,mixed>> $items */
+    public function reconciliationRun(string $jobId, array $items): array
+    {
+        $queue = $this->reconciliationQueue ?? new ReconciliationQueueService($this->repository);
+        foreach ($items as $item) {
+            $queue->enqueue($jobId, $item);
+        }
+
+        return ['queued' => count($items), 'due' => $queue->dueItems($jobId)];
+    }
+
+    /** @param array<int,array<string,mixed>> $records */
+    public function deltaPlan(string $jobId, array $records): array
+    {
+        $snapshot = $this->repository->snapshot($jobId);
+        $cutoff = (string) ($snapshot['source_cutoff_time'] ?? '1970-01-01T00:00:00+00:00');
+
+        return ($this->deltaEngine ?? new DeltaSyncEngine(new SyncPolicyEngine(), new ConflictDetectionEngine()))->plan($cutoff, $records);
+    }
+
+    /** @param array<int,array<string,mixed>> $delta @param array<string,string> $policies */
+    public function deltaExecute(string $jobId, array $delta, array $policies): array
+    {
+        $engine = $this->deltaEngine ?? new DeltaSyncEngine(new SyncPolicyEngine(), new ConflictDetectionEngine());
+        $result = $engine->execute($delta, $policies);
+        foreach ($result['conflicts'] as $conflict) {
+            $this->repository->addConflict($jobId, $conflict);
+        }
+
+        return $result;
+    }
+
+    /** @param array<int,array<string,mixed>> $relations */
+    public function verifyRelations(array $relations): array
+    {
+        return ($this->relationIntegrityEngine ?? new RelationIntegrityEngine())->verify($relations);
+    }
+
+    /** @param array<int,array<string,mixed>> $files */
+    public function verifyFiles(array $files): array
+    {
+        return ($this->fileReconciliationService ?? new FileReconciliationService())->verify($files);
+    }
+
+    public function conflictsList(string $jobId): array
+    {
+        return ['items' => $this->repository->conflicts($jobId)];
+    }
+
+    /** @param array<string,mixed> $resolution */
+    public function conflictsResolve(string $jobId, string $conflictId, array $resolution): array
+    {
+        $this->repository->saveManualOverride($jobId, 'conflict:' . $conflictId, $resolution);
+
+        return ['conflict_id' => $conflictId, 'status' => 'resolved', 'resolution' => $resolution];
+    }
+
+    public function watermarksShow(string $jobId): array
+    {
+        $snapshot = $this->repository->snapshot($jobId) ?? [];
+
+        return ['snapshot_id' => $snapshot['snapshot_id'] ?? null, 'watermarks' => $snapshot['per_entity_watermark'] ?? []];
+    }
+
+    public function stateInspect(string $jobId, string $entityType, string $entityId): array
+    {
+        return ['state' => $this->repository->entityState($jobId, $entityType, $entityId)];
+    }
+
+    public function orphansList(string $jobId): array
+    {
+        $orphans = array_values(array_filter($this->repository->reconciliationQueue($jobId), static fn (array $i): bool => str_contains((string) ($i['reason'] ?? ''), 'orphan')));
+
+        return ['items' => $orphans];
+    }
+
+    /** @param array<int,array<string,mixed>> $relations */
+    public function repairRelations(string $jobId, array $relations): array
+    {
+        $repaired = [];
+        foreach ($relations as $relation) {
+            if (($relation['target_exists'] ?? false) === false && ($relation['source_exists'] ?? false) === true) {
+                $relation['target_exists'] = true;
+                $repaired[] = $relation;
+            }
+        }
+
+        return ['job_id' => $jobId, 'repaired' => $repaired, 'count' => count($repaired)];
+    }
     public function audit(): int { return 0; }
 
     public function createJob(string $mode = 'initial'): string

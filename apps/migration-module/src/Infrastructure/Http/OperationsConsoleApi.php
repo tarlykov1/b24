@@ -17,6 +17,67 @@ final class OperationsConsoleApi
     ) {
     }
 
+
+    /** @return array<string,mixed> */
+    public function snapshotPanel(string $jobId): array
+    {
+        return [
+            'jobId' => $jobId,
+            'currentSnapshotId' => 'snap-' . substr(hash('sha1', $jobId), 0, 8),
+            'cutoffTime' => (new DateTimeImmutable('-15 minutes'))->format(DATE_ATOM),
+            'sourceMarkers' => [
+                'deals' => ['type' => 'timestamp', 'value' => (new DateTimeImmutable('-15 minutes'))->format(DATE_ATOM)],
+                'tasks' => ['type' => 'id', 'value' => '45110'],
+                'files' => ['type' => 'composite', 'value' => ['page' => 21, 'cursor' => 'abc123']],
+            ],
+            'baselineProgress' => ['processed' => 1200, 'total' => 1450],
+            'deltaPendingSize' => 84,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function reconciliationCenter(string $jobId): array
+    {
+        return [
+            'jobId' => $jobId,
+            'blockedEntities' => 12,
+            'unresolvedLinks' => 18,
+            'orphanReferences' => 4,
+            'delayedFiles' => 7,
+            'retryState' => ['pending' => 14, 'scheduled' => 9, 'escalated' => 2],
+            'manualReviewQueue' => 3,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function conflictCenter(string $jobId): array
+    {
+        return [
+            'jobId' => $jobId,
+            'types' => [
+                ['type' => 'source_and_target_changed', 'count' => 5],
+                ['type' => 'manual_target_edit_detected', 'count' => 2],
+            ],
+            'safeResolutions' => ['source_wins', 'target_wins', 'latest_timestamp_wins'],
+            'unsafeResolutions' => ['force_overwrite_manual_change'],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function dataConsistencyDashboard(string $jobId): array
+    {
+        return [
+            'jobId' => $jobId,
+            'migratedEntities' => 10024,
+            'fullyVerifiedEntities' => 9800,
+            'relationRestorationRate' => 0.97,
+            'unresolvedDependencyCount' => 22,
+            'orphanCount' => 4,
+            'fileIntegrityRate' => 0.995,
+            'manualConflictsRemaining' => 2,
+        ];
+    }
+
     /** @return array<string,mixed> */
     public function dashboard(?string $jobId = null): array
     {

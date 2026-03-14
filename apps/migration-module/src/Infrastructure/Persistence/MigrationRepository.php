@@ -47,6 +47,30 @@ final class MigrationRepository
     /** @var array<string,array<string,mixed>> */
     private array $manualOverrides = [];
 
+    /** @var array<string,array<string,mixed>> */
+    private array $snapshotState = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $reconciliationQueue = [];
+
+    /** @var array<string,array<int,array<string,mixed>>> */
+    private array $conflicts = [];
+
+    /** @var array<string,array<string,mixed>> */
+    private array $entityStates = [];
+
+    /** @var array<string,array<string,mixed>> */
+    private array $targetChangeMarkers = [];
+
+    /** @var array<string,array<string,array<string,mixed>>> */
+    private array $identityMappings = [];
+
+    /** @var array<string,array<string,mixed>> */
+    private array $queueStates = [];
+
+    /** @var array<string,string> */
+    private array $highWaterMarks = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -338,6 +362,66 @@ final class MigrationRepository
     public function manualOverride(string $jobId, string $overrideKey): ?array
     {
         return $this->manualOverrides[$jobId . ':' . $overrideKey] ?? null;
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    public function saveSnapshot(string $jobId, array $snapshot): void
+    {
+        $this->snapshotState[$jobId] = $snapshot;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function snapshot(string $jobId): ?array
+    {
+        return $this->snapshotState[$jobId] ?? null;
+    }
+
+    /** @param array<string,mixed> $item */
+    public function enqueueReconciliationItem(string $jobId, array $item): void
+    {
+        $this->reconciliationQueue[$jobId][] = $item;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function reconciliationQueue(string $jobId): array
+    {
+        return $this->reconciliationQueue[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $conflict */
+    public function addConflict(string $jobId, array $conflict): void
+    {
+        $this->conflicts[$jobId][] = $conflict;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function conflicts(string $jobId): array
+    {
+        return $this->conflicts[$jobId] ?? [];
+    }
+
+    /** @param array<string,mixed> $state */
+    public function saveEntityState(string $jobId, string $entityType, string $entityId, array $state): void
+    {
+        $this->entityStates[sprintf('%s:%s:%s', $jobId, $entityType, $entityId)] = $state;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function entityState(string $jobId, string $entityType, string $entityId): ?array
+    {
+        return $this->entityStates[sprintf('%s:%s:%s', $jobId, $entityType, $entityId)] ?? null;
+    }
+
+    /** @param array<string,mixed> $marker */
+    public function saveTargetChangeMarker(string $jobId, string $entityType, string $targetId, array $marker): void
+    {
+        $this->targetChangeMarkers[sprintf('%s:%s:%s', $jobId, $entityType, $targetId)] = $marker;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function targetChangeMarker(string $jobId, string $entityType, string $targetId): ?array
+    {
+        return $this->targetChangeMarkers[sprintf('%s:%s:%s', $jobId, $entityType, $targetId)] ?? null;
     }
 
 }
