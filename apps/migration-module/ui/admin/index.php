@@ -25,6 +25,7 @@ if (is_file($db)) {
   <li>Last run summary: jobs=<?= $summary['jobs'] ?>, queue=<?= $summary['queue'] ?>, mapped=<?= $summary['mapped'] ?></li>
   <li>Pause/resume status отображается через status job в SQLite.</li>
 </ul>
+<p><a href="api.php/dashboard">Operations Console API: /dashboard</a></p>
 <h3>CLI actions</h3>
 <p><code>validate</code>, <code>dry-run</code>, <code>plan</code>, <code>execute</code>, <code>resume</code>, <code>verify</code>, <code>report</code></p>
 <h3>Diff / reconciliation</h3>
