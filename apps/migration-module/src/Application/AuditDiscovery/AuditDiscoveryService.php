@@ -1,0 +1,299 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MigrationModule\Application\AuditDiscovery;
+
+use DateTimeImmutable;
+use MigrationModule\Application\AuditDiscovery\Inspection\DatabaseInspector;
+use MigrationModule\Application\AuditDiscovery\Inspection\FilesystemInspector;
+use MigrationModule\Application\AuditDiscovery\Inspection\RestInspector;
+use MigrationModule\Application\AuditDiscovery\Reporting\HtmlReportRenderer;
+use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
+use PDO;
+use Throwable;
+
+final class AuditDiscoveryService
+{
+    public function __construct(
+        private readonly DatabaseInspector $dbInspector = new DatabaseInspector(),
+        private readonly FilesystemInspector $filesystemInspector = new FilesystemInspector(),
+        private readonly RestInspector $restInspector = new RestInspector(),
+        private readonly RiskEngine $riskEngine = new RiskEngine(),
+        private readonly StrategyHintEngine $strategyHintEngine = new StrategyHintEngine(),
+        private readonly HtmlReportRenderer $htmlReportRenderer = new HtmlReportRenderer(),
+    ) {
+    }
+
+    public function run(string $section = 'run'): array
+    {
+        $pdo = $this->buildReadonlyPdo();
+        $client = $this->buildRestClient();
+        $uploadPath = (string) $this->env('BITRIX_UPLOAD_PATH', '/upload');
+
+        $db = $this->dbInspector->inspect($pdo);
+        $fs = $this->filesystemInspector->inspect($uploadPath);
+        $rest = $this->restInspector->inspect($client);
+
+        $portal = $this->portalProfile($db, $fs, $rest);
+        $users = $this->usersAudit($db, $rest);
+        $tasks = $this->tasksAudit($db, $rest);
+        $files = $this->filesAudit($db, $fs);
+        $crm = $this->crmAudit($db, $rest);
+        $permissions = $this->permissionsAudit($db);
+
+        $profile = [
+            'generated_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+            'portal' => $portal,
+            'users' => $users,
+            'tasks' => $tasks,
+            'files' => $files,
+            'crm' => $crm,
+            'permissions' => $permissions,
+        ];
+
+        $summary = $this->riskEngine->analyze([
+            'users' => $users,
+            'tasks' => $tasks,
+            'files' => $files,
+            'permissions' => $permissions,
+        ]);
+        $strategyHints = $this->strategyHintEngine->build($profile, $summary);
+
+        $result = [
+            'portal_profile' => $portal,
+            'data_volumes' => [
+                'users' => $users['total'],
+                'tasks' => $tasks['total'],
+                'files' => $files['total'],
+                'storage_size_gb' => $files['total_size_gb'],
+            ],
+            'users' => $users,
+            'tasks' => $tasks,
+            'files' => $files,
+            'crm' => $crm,
+            'permissions' => $permissions,
+            'summary' => $summary,
+            'strategy_hints' => $strategyHints,
+            'readiness_score' => $this->readinessScore($summary),
+            'sources' => ['db' => $db['available'] ?? false, 'fs' => $fs['available'] ?? false, 'rest' => $rest['available'] ?? false],
+        ];
+
+        if (in_array($section, ['run', 'report'], true)) {
+            $this->persistOutputs($result);
+        }
+
+        return match ($section) {
+            'portal' => $portal,
+            'users' => $users,
+            'tasks' => $tasks,
+            'files' => $files,
+            'crm' => $crm,
+            'permissions' => $permissions,
+            'summary' => $summary,
+            'report' => ['report' => '.audit/report.html', 'profile' => '.audit/migration_profile.json'],
+            default => $result,
+        };
+    }
+
+    private function portalProfile(array $db, array $fs, array $rest): array
+    {
+        return [
+            'bitrix_version' => (string) $this->env('BITRIX_VERSION', 'unknown'),
+            'modules' => $this->installedModules(),
+            'enabled_modules' => $this->installedModules(),
+            'database_size' => $this->formatBytes((int) ($db['db_size_bytes'] ?? 0)),
+            'file_storage_size' => $this->formatBytes((int) ($fs['total_size_bytes'] ?? 0)),
+            'users_total' => (int) (($db['counts']['b_user'] ?? 0) ?: ($rest['users_total'] ?? 0)),
+            'users_active' => max(0, (int) (($db['counts']['b_user'] ?? 0) - ($db['users_inactive'] ?? 0))),
+            'groups_projects_count' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+            'smart_processes_enabled' => count((array) ($rest['smart_processes'] ?? [])) > 0,
+        ];
+    }
+
+    private function usersAudit(array $db, array $rest): array
+    {
+        $total = (int) (($db['counts']['b_user'] ?? 0) ?: ($rest['users_total'] ?? 0));
+        $inactive = (int) ($db['users_inactive'] ?? 0);
+
+        return [
+            'total' => $total,
+            'active' => max(0, $total - $inactive),
+            'inactive' => $inactive,
+            'external' => 0,
+            'blocked' => (int) ($db['users_blocked'] ?? 0),
+            'owning_tasks' => count((array) ($db['task_owner_distribution'] ?? [])),
+            'owning_files' => count((array) ($db['files_by_user'] ?? [])),
+            'owning_disks' => (int) ($db['counts']['b_disk_object'] ?? 0),
+            'owning_projects_groups' => (int) ($db['counts']['b_sonet_user2group'] ?? 0),
+            'without_email' => (int) ($db['users_without_email'] ?? 0),
+            'without_login' => (int) ($db['users_without_login'] ?? 0),
+            'without_activity' => $inactive,
+        ];
+    }
+
+    private function tasksAudit(array $db, array $rest): array
+    {
+        $total = (int) (($db['counts']['b_tasks'] ?? 0) ?: ($rest['tasks_total'] ?? 0));
+
+        return [
+            'total' => $total,
+            'open' => (int) ($db['tasks_open'] ?? 0),
+            'closed' => (int) ($db['tasks_closed'] ?? 0),
+            'with_files' => (int) ($db['tasks_with_attachments'] ?? 0),
+            'with_comments' => (int) ($db['tasks_with_comments'] ?? 0),
+            'without_responsible' => (int) ($db['tasks_without_responsible'] ?? 0),
+            'referencing_deleted_users' => 0,
+            'by_project_group' => (array) ($db['tasks_by_group'] ?? []),
+            'comments_total' => (int) ($db['tasks_comments_total'] ?? 0),
+            'attachments_total' => (int) ($db['tasks_with_attachments'] ?? 0),
+            'distribution_per_user' => (array) ($db['task_owner_distribution'] ?? []),
+        ];
+    }
+
+    private function filesAudit(array $db, array $fs): array
+    {
+        $bytes = (int) (($fs['total_size_bytes'] ?? 0) ?: ($db['files_total_size'] ?? 0));
+
+        return [
+            'total' => (int) (($fs['total_files'] ?? 0) ?: ($db['counts']['b_file'] ?? 0)),
+            'total_size_bytes' => $bytes,
+            'total_size_gb' => round($bytes / 1024 / 1024 / 1024, 2),
+            'attached_to_tasks' => (int) ($db['tasks_with_attachments'] ?? 0),
+            'attached_to_smart_processes' => 0,
+            'in_user_disks' => (int) ($db['counts']['b_disk_object'] ?? 0),
+            'in_group_disks' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+            'orphan_files' => (int) ($db['missing_file_links'] ?? 0),
+            'missing_physical_files' => (int) ($fs['missing_physical_files'] ?? 0),
+            'duplicate_files_by_checksum' => (int) ($fs['duplicate_files_by_checksum'] ?? 0),
+            'size_distribution' => (array) ($fs['size_buckets'] ?? ['lt_10mb' => 0, 'mb_10_100' => 0, 'mb_100_1gb' => 0, 'gt_1gb' => 0]),
+            'mime_distribution' => (array) ($fs['mime_distribution'] ?? []),
+        ];
+    }
+
+    private function crmAudit(array $db, array $rest): array
+    {
+        return [
+            'pipelines' => [],
+            'deal_stages' => [],
+            'custom_fields' => (int) ($db['crm_custom_fields'] ?? 0),
+            'field_types' => [],
+            'mandatory_fields' => [],
+            'enum_values' => [],
+            'smart_processes' => (array) ($rest['smart_processes'] ?? []),
+            'records_per_smart_process' => [],
+            'custom_field_fill_rate' => [],
+            'unused_fields' => [],
+        ];
+    }
+
+    private function permissionsAudit(array $db): array
+    {
+        return [
+            'groups' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+            'projects' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+            'group_disks' => (int) ($db['counts']['b_sonet_group'] ?? 0),
+            'user_disks' => (int) ($db['counts']['b_disk_object'] ?? 0),
+            'acl_anomalies' => (int) ($db['orphan_disk_links'] ?? 0),
+            'files_owned_by_inactive_users' => 0,
+            'tasks_owned_by_inactive_users' => 0,
+            'inactive_owners' => 0,
+        ];
+    }
+
+    private function persistOutputs(array $result): void
+    {
+        if (!is_dir('.audit')) {
+            mkdir('.audit', 0775, true);
+        }
+
+        $profile = [
+            'users' => [
+                'total' => $result['users']['total'] ?? 0,
+                'active' => $result['users']['active'] ?? 0,
+            ],
+            'tasks' => [
+                'total' => $result['tasks']['total'] ?? 0,
+                'with_files' => $result['tasks']['with_files'] ?? 0,
+            ],
+            'files' => [
+                'total_size_gb' => $result['files']['total_size_gb'] ?? 0,
+            ],
+            'migration_strategy' => [
+                'files_separate_pipeline' => (($result['strategy_hints']['files_strategy'] ?? '') === 'separate_bulk_transfer'),
+            ],
+            'raw' => $result,
+        ];
+
+        file_put_contents('.audit/migration_profile.json', json_encode($profile, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        file_put_contents('.audit/report.html', $this->htmlReportRenderer->render($result));
+    }
+
+    private function buildReadonlyPdo(): ?PDO
+    {
+        $dsn = (string) $this->env('BITRIX_DB_DSN', '');
+        if ($dsn === '') {
+            return null;
+        }
+
+        try {
+            $pdo = new PDO($dsn, (string) $this->env('BITRIX_DB_USER', ''), (string) $this->env('BITRIX_DB_PASSWORD', ''), [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+            if (str_starts_with($dsn, 'mysql:')) {
+                $pdo->exec('SET SESSION TRANSACTION READ ONLY');
+            }
+
+            return $pdo;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function buildRestClient(): ?BitrixRestClient
+    {
+        $url = (string) $this->env('BITRIX_WEBHOOK_URL', '');
+        $token = (string) $this->env('BITRIX_WEBHOOK_TOKEN', '');
+
+        return ($url !== '' && $token !== '') ? new BitrixRestClient($url, $token) : null;
+    }
+
+    private function installedModules(): array
+    {
+        $modules = (string) $this->env('BITRIX_MODULES', 'crm,tasks,disk,intranet');
+
+        return array_values(array_filter(array_map('trim', explode(',', $modules))));
+    }
+
+    private function formatBytes(int $bytes): string
+    {
+        if ($bytes <= 0) {
+            return '0 B';
+        }
+
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $pow = (int) floor(log($bytes, 1024));
+        $pow = min($pow, count($units) - 1);
+
+        return round($bytes / (1024 ** $pow), 2) . ' ' . $units[$pow];
+    }
+
+
+    private function env(string $name, string $default): string
+    {
+        return isset($_ENV[$name]) && $_ENV[$name] !== '' ? (string) $_ENV[$name] : ((string) (getenv($name) ?: $default));
+    }
+
+    private function readinessScore(array $summary): int
+    {
+        $risk = (string) ($summary['risk_level'] ?? 'LOW');
+
+        return match ($risk) {
+            'LOW' => 90,
+            'MEDIUM' => 70,
+            'HIGH' => 45,
+            default => 20,
+        };
+    }
+}

@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
@@ -42,6 +43,21 @@ function out(array $payload, int $code = 0): never {
 $command = $argv[1] ?? 'help';
 $configPath = $command === 'migration' ? ($argv[5] ?? 'migration.config.yml') : ($argv[2] ?? 'migration.config.yml');
 
+$audits = [
+    'audit:portal' => 'portal',
+    'audit:users' => 'users',
+    'audit:tasks' => 'tasks',
+    'audit:files' => 'files',
+    'audit:crm' => 'crm',
+    'audit:permissions' => 'permissions',
+    'audit:summary' => 'summary',
+    'audit:report' => 'report',
+    'audit:run' => 'run',
+];
+if (isset($audits[$command])) {
+    out((new AuditDiscoveryService())->run($audits[$command]));
+}
+
 try {
     $config = (new ConfigLoader())->load($configPath);
     $storagePath = (string) (($config['storage']['path'] ?? '.prototype/migration.sqlite'));
@@ -66,7 +82,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
