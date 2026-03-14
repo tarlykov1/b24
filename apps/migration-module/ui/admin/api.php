@@ -76,9 +76,25 @@ if ($path === '/jobs/action' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+if (in_array($path, ['/workers/action', '/mapping/action', '/integrity/action', '/conflicts/action', '/replay/action'], true) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'ok' => true,
+        'scope' => trim((string) preg_replace('#^/#', '', str_replace('/action', '', $path))),
+        'jobId' => (string) ($query['jobId'] ?? ''),
+        'action' => (string) ($query['action'] ?? 'noop'),
+        'payload' => $query,
+        'acceptedAt' => date(DATE_ATOM),
+        'message' => 'Action contract accepted. Runtime binding can be enabled behind feature flag.',
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $response = match ($path) {
     '/dashboard' => $api->dashboard($query['jobId'] ?? null),
+    '/meta' => $api->meta(),
     '/jobs' => $api->jobs($query),
+    '/jobs/details' => $api->jobDetails((string) ($query['jobId'] ?? 'latest')),
     '/conflicts' => $api->conflicts($query),
     '/integrity' => $api->integrity($query),
     '/workers' => $api->workers($query),

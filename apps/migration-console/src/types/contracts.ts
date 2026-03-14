@@ -23,8 +23,27 @@ export interface Paged<T> {
   offset: number;
 }
 
-export interface MetricPoint {
-  name: string;
-  value: number;
-  trend?: number;
+export interface DashboardDto {
+  stats: Record<string, number>;
+  latestEvents: Array<{ timestamp: string; kind: string; severity: string; message: string }>;
+  jobs: JobDto[];
+  timeRange: string;
+  featureFlags?: Record<string, boolean>;
+  roles?: string[];
+}
+
+export interface MetaDto {
+  featureFlags: Record<string, boolean>;
+  roles: string[];
+  defaultRole: string;
+  realtime: { transport: string; fallback: string };
+}
+
+export interface JobDetailsDto {
+  jobId: string;
+  overview: { status: string; mode: string; progress: number; currentStage: string; throughput: number };
+  timeline: Array<{ step: string; status: string }>;
+  entities: { processed: number; pending: number; failed: number };
+  queues: Record<string, number>;
+  syncStatus: { mode: string; lagSec: number; checkpoint: string };
 }

@@ -32,9 +32,11 @@ final class OperationsConsoleApi
             'retryRate' => array_sum(array_map(static fn (array $w): float => (float) $w['retryRate'], $activeWorkers['items'])) / max(1, count($activeWorkers['items'])),
             'errorRate' => min(1, (count($conflicts['items']) + count($integrity['items'])) / max(1, $jobs['total'] * 15)),
             'queueDepth' => array_sum(array_map(static fn (array $w): int => (int) $w['queueDepth'], $activeWorkers['items'])),
+            'sourceTargetLagSec' => random_int(5, 240),
             'workerHealth' => count(array_filter($activeWorkers['items'], static fn (array $w): bool => $w['status'] !== 'blocked')) / max(1, count($activeWorkers['items'])),
             'integrityIssues' => $integrity['total'],
             'unresolvedConflicts' => $conflicts['total'],
+            'incrementalSyncState' => random_int(0, 1) ? 1 : 0,
         ];
 
         return [
@@ -42,6 +44,24 @@ final class OperationsConsoleApi
             'latestEvents' => $this->recentEvents($jobId),
             'jobs' => array_slice($jobs['items'], 0, 6),
             'timeRange' => '1h',
+            'featureFlags' => $this->meta()['featureFlags'],
+            'roles' => $this->meta()['roles'],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function meta(): array
+    {
+        return [
+            'featureFlags' => [
+                'workersControlActions' => true,
+                'mappingVersioning' => true,
+                'integrityRepairSimulation' => true,
+                'replaySafetyGuard' => true,
+            ],
+            'roles' => ['operator', 'architect', 'support', 'admin'],
+            'defaultRole' => 'operator',
+            'realtime' => ['transport' => 'sse', 'fallback' => 'polling'],
         ];
     }
 
@@ -101,6 +121,31 @@ final class OperationsConsoleApi
         }
 
         return ['items' => $items, 'total' => $total, 'limit' => $limit, 'offset' => $offset];
+    }
+
+    /** @return array<string,mixed> */
+    public function jobDetails(string $jobId): array
+    {
+        return [
+            'jobId' => $jobId,
+            'overview' => [
+                'status' => ['running', 'paused', 'failed', 'completed'][random_int(0, 3)],
+                'mode' => ['validate', 'plan', 'dry-run', 'execute', 'resume', 'verify', 'sync'][random_int(0, 6)],
+                'progress' => random_int(5, 97),
+                'currentStage' => ['extract', 'map', 'load', 'verify', 'sync'][random_int(0, 4)],
+                'throughput' => random_int(30, 220),
+            ],
+            'timeline' => [
+                ['step' => 'preflight', 'status' => 'completed'],
+                ['step' => 'plan', 'status' => 'completed'],
+                ['step' => 'execute', 'status' => 'running'],
+                ['step' => 'verify', 'status' => 'pending'],
+                ['step' => 'sync', 'status' => 'pending'],
+            ],
+            'entities' => ['processed' => random_int(400, 6000), 'pending' => random_int(10, 800), 'failed' => random_int(0, 50)],
+            'queues' => ['crm' => random_int(0, 400), 'users' => random_int(0, 200), 'tasks' => random_int(0, 300)],
+            'syncStatus' => ['mode' => 'incremental', 'lagSec' => random_int(5, 220), 'checkpoint' => 'cp-' . random_int(10, 999)],
+        ];
     }
 
     /** @param array{jobId?:string|null,limit?:int,offset?:int,severity?:string|null,type?:string|null} $query

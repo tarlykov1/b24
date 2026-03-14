@@ -14,6 +14,10 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   return res.json() as Promise<T>;
 }
 
+export async function postAction<T>(path: string, payload: Record<string, unknown>): Promise<T> {
+  return fetchJson<T>(path, { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export function openStream(topic: 'logs' | 'workers' | 'dashboard', onMessage: (payload: unknown) => void): EventSource {
   const stream = new EventSource(`${API_BASE}/stream?topic=${topic}`);
   stream.addEventListener(topic, (event) => {
