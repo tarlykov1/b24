@@ -11,6 +11,7 @@ final class HtmlReportRenderer
         $json = htmlspecialchars((string) json_encode($audit, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES);
         $risk = htmlspecialchars((string) ($audit['summary']['risk_level'] ?? 'UNKNOWN'), ENT_QUOTES);
         $score = (int) ($audit['readiness_score'] ?? 0);
+        $linkage = (array) ($audit['linkage'] ?? []);
 
         return <<<HTML
 <!doctype html>
@@ -30,7 +31,23 @@ pre{overflow:auto;background:#111;color:#ddd;padding:12px;border-radius:8px}
 <h1>Bitrix Discovery Audit Report</h1>
 <div class="card"><h2>Risk Flags</h2><p class="flag">Risk level: {$risk}</p></div>
 <div class="card"><h2>Migration readiness score</h2><p class="good">{$score}/100</p></div>
+<div class="card"><h2>Ownership & ACL Risks</h2>
+<ul>
+<li>files owned by inactive users: <b>{$this->num($metrics['files_owned_by_inactive_users'] ?? 0)}</b></li>
+<li>tasks owned by inactive users: <b>{$this->num($metrics['tasks_owned_by_inactive_users'] ?? 0)}</b></li>
+<li>ACL anomalies: <b>{$this->num($metrics['disk_acl_invalid_entries'] ?? 0)}</b></li>
+<li>orphan ownership objects: <b>{$this->num(array_sum(array_map('intval', $orphans)))}</b></li>
+<li>broken disk inheritance: <b>{$this->num($acl['broken_acl_inheritance'] ?? 0)}</b></li>
+</ul>
+</div>
+<div class="card"><h2>Ownership charts data</h2>
+<p>ownership distribution</p><ul>{$this->pairs((array) ($ownership['charts']['ownership_distribution'] ?? []))}</ul>
+<p>file ownership by user</p><ul>{$this->pairs((array) ($ownership['charts']['file_ownership_by_user'] ?? []))}</ul>
+<p>tasks by responsible user</p><ul>{$this->pairs((array) ($ownership['charts']['tasks_by_responsible_user'] ?? []))}</ul>
+</div>
 <div class="card"><h2>Strategy hints</h2><ul>{$this->hintsList($audit['strategy_hints'] ?? [])}</ul></div>
+<div class="card"><h2>Task / File Linkage Risks</h2><ul>{$this->linkageList($linkage)}</ul></div>
+<div class="card"><h2>Linkage charts source</h2><ul>{$this->chartSourceList($linkage)}</ul></div>
 <div class="card"><h2>Data tables & charts source</h2><p>JSON below is used by charts/tables in admin UI.</p></div>
 <pre>{$json}</pre>
 </body>
@@ -42,9 +59,35 @@ HTML;
     {
         $items = '';
         foreach ($hints as $k => $v) {
-            $items .= '<li><strong>' . htmlspecialchars((string) $k, ENT_QUOTES) . '</strong>: ' . htmlspecialchars(is_bool($v) ? ($v ? 'true' : 'false') : (string) $v, ENT_QUOTES) . '</li>';
+            $items .= '<li><strong>' . htmlspecialchars((string) $k, ENT_QUOTES) . '</strong>: ' . htmlspecialchars(is_bool($v) ? ($v ? 'true' : 'false') : (string) json_encode($v, JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</li>';
         }
 
         return $items;
+    }
+
+    private function linkageList(array $linkage): string
+    {
+        $entries = [
+            'tasks with files' => (int) ($linkage['tasks_with_attachments'] ?? 0),
+            'tasks with comment files' => (int) ($linkage['tasks_with_comment_attachments'] ?? 0),
+            'multi-linked files' => (int) ($linkage['files_multi_linked'] ?? 0),
+            'orphan attachment references' => (int) ($linkage['orphan_attachment_references'] ?? 0),
+            'attachment topology complexity (types)' => count((array) ($linkage['attachment_type_distribution'] ?? [])),
+        ];
+
+        $items = '';
+        foreach ($entries as $label => $value) {
+            $items .= '<li><strong>' . htmlspecialchars($label, ENT_QUOTES) . '</strong>: ' . $value . '</li>';
+        }
+
+        return $items;
+    }
+
+    private function chartSourceList(array $linkage): string
+    {
+        return '<li>attachments per task: linkage.attachments_per_task_top</li>'
+            . '<li>files by linkage type: linkage.attachment_type_distribution</li>'
+            . '<li>attachment source distribution: linkage.attachment_type_distribution</li>'
+            . '<li>multi-linked files distribution: linkage.raw.files_* metrics</li>';
     }
 }

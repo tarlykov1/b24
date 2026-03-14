@@ -56,6 +56,29 @@ it('generates report artifacts on audit run', function (): void {
     @unlink($dbPath);
 });
 
+
+it('builds linkage audit metrics and strategy hints', function (): void {
+    $dbPath = sys_get_temp_dir() . '/audit-fixture-' . uniqid() . '.sqlite';
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $sql = file_get_contents(__DIR__ . '/../Fixtures/audit_fixture.sql');
+    $pdo->exec((string) $sql);
+
+    putenv('BITRIX_DB_DSN=sqlite:' . $dbPath);
+    putenv('BITRIX_UPLOAD_PATH=' . __DIR__ . '/../Fixtures');
+
+    $service = new AuditDiscoveryService();
+    $linkage = $service->run('linkage');
+
+    assert(($linkage['tasks_with_attachments'] ?? 0) > 0);
+    assert(($linkage['tasks_with_comment_attachments'] ?? 0) > 0);
+
+    $full = $service->run('run', true);
+    assert(($full['deep_mode'] ?? false) === true);
+    assert(isset($full['strategy_hints']['file_migration_strategy']));
+
+    @unlink($dbPath);
+});
+
 function it(string $title, callable $fn): void
 {
     $fn();

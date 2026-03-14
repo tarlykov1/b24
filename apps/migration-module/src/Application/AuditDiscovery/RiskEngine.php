@@ -12,10 +12,17 @@ final class RiskEngine
         $score = 0;
 
         $tasks = (int) ($profile['tasks']['total'] ?? 0);
+        $filesTotal = max(1, (int) ($profile['files']['total'] ?? 0));
         $filesGb = (float) ($profile['files']['total_size_gb'] ?? 0.0);
         $orphanFiles = (int) ($profile['files']['orphan_files'] ?? 0);
-        $inactiveOwners = (int) ($profile['permissions']['inactive_owners'] ?? 0);
         $attachments = (int) ($profile['tasks']['with_files'] ?? 0);
+
+        $linkage = (array) ($profile['linkage'] ?? []);
+        $tasksWithCommentAttachments = (int) ($linkage['tasks_with_comment_attachments'] ?? 0);
+        $filesMultiLinked = (int) ($linkage['files_multi_linked'] ?? 0);
+        $orphanAttachmentReferences = (int) ($linkage['orphan_attachment_references'] ?? 0);
+        $diskObjectsWithoutContext = (int) ($linkage['disk_objects_without_attached_context'] ?? 0);
+        $attachmentTypeCount = count((array) ($linkage['attachment_type_distribution'] ?? []));
 
         if ($tasks > 200000) {
             $score += 4;
@@ -33,19 +40,57 @@ final class RiskEngine
             $reasons[] = 'large file storage';
         }
 
-        if ($orphanFiles > 5000) {
-            $score += 3;
-            $reasons[] = 'many orphan files';
+        if ($orphanFiles > 0) {
+            $score += 4;
+            $reasons[] = 'orphan files detected';
         }
 
-        if ($inactiveOwners > 1000) {
-            $score += 3;
-            $reasons[] = 'many inactive owners detected';
+        if ($inactiveShare > 20) {
+            $score += 4;
+            $reasons[] = '>20% files owned by inactive users';
+        } elseif ($inactiveShare > 5) {
+            $score += 2;
+            $reasons[] = '>5% files owned by inactive users';
+        }
+
+        if ($tasksOwnedByInactive > 0) {
+            $score += 2;
+            $reasons[] = 'tasks owned by inactive users detected';
+        }
+
+        if ($aclInvalidEntries > 0) {
+            $score += 2;
+            $reasons[] = 'ACL entries referencing missing users/groups';
         }
 
         if ($attachments > 30000) {
             $score += 2;
             $reasons[] = 'many task attachments';
+        }
+
+        if ($tasksWithCommentAttachments > 5000) {
+            $score += 2;
+            $reasons[] = 'comment-file migration risk';
+        }
+
+        if ($filesMultiLinked > 2000) {
+            $score += 3;
+            $reasons[] = 'multi-context disk linkage';
+        }
+
+        if ($orphanAttachmentReferences > 0) {
+            $score += 3;
+            $reasons[] = 'orphan attachment graph';
+        }
+
+        if ($diskObjectsWithoutContext > 0) {
+            $score += 2;
+            $reasons[] = 'disk objects without attached context';
+        }
+
+        if ($attachmentTypeCount > 4) {
+            $score += 2;
+            $reasons[] = 'complex attachment topology';
         }
 
         $risk = match (true) {
@@ -55,6 +100,16 @@ final class RiskEngine
             default => 'LOW',
         };
 
-        return ['risk_level' => $risk, 'risks' => $reasons, 'score' => $score];
+        return [
+            'risk_level' => $risk,
+            'risks' => $reasons,
+            'score' => $score,
+            'ownership_metrics' => [
+                'files_owned_by_inactive_users' => $filesOwnedByInactive,
+                'tasks_owned_by_inactive_users' => $tasksOwnedByInactive,
+                'disk_acl_invalid_entries' => $aclInvalidEntries,
+                'files_without_valid_owner' => (int) ($ownershipMetrics['files_without_valid_owner'] ?? 0),
+            ],
+        ];
     }
 }

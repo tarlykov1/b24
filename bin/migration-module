@@ -51,12 +51,14 @@ $audits = [
     'audit:files' => 'files',
     'audit:crm' => 'crm',
     'audit:permissions' => 'permissions',
+    'audit:linkage' => 'linkage',
     'audit:summary' => 'summary',
     'audit:report' => 'report',
     'audit:run' => 'run',
 ];
 if (isset($audits[$command])) {
-    out((new AuditDiscoveryService())->run($audits[$command]));
+    $deep = in_array('--deep', $argv, true);
+    out((new AuditDiscoveryService())->run($audits[$command], $deep));
 }
 
 if ($command === 'audit:velocity') {

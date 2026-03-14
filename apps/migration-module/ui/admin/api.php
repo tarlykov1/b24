@@ -124,6 +124,8 @@ if ($path === '/audit/portal') {
     $response = (new AuditDiscoveryService())->run('portal');
 } elseif ($path === '/audit/summary') {
     $response = (new AuditDiscoveryService())->run('summary');
+} elseif ($path === '/audit/ownership') {
+    $response = (new AuditDiscoveryService())->run('ownership');
 } elseif ($path === '/audit/report') {
     $response = (new AuditDiscoveryService())->run('report');
 } elseif ($path === '/meta') {
