@@ -1,78 +1,78 @@
-# Bitrix24 Migration Toolkit
+# Инструментарий миграции Bitrix24
 
-Executable prototype for Bitrix24 migration workflows (CLI + SQLite runtime state + admin API/UI).
+Исполняемый прототип для сценариев миграции Bitrix24 (CLI + состояние выполнения в SQLite + admin API/UI).
 
-## Project Status / Maturity
+## Статус проекта / зрелость
 
-**Current maturity:** **prototype with working end-to-end CLI flow**.
+**Текущий уровень зрелости:** **прототип с рабочим сквозным CLI-флоу**.
 
-- **Implemented:** prototype runtime (`validate` → `dry-run` → `execute`/`resume` → `verify`/`report`/`status`) with SQLite persistence and stub adapters.  
-- **Implemented (pilot hardening):** `system:check`, admin login + CSRF, `/health` and `/ready` endpoints, split config files.  
-- **Partially implemented:** real Bitrix REST adapter (auto-enable via env), consistency/delta/reconciliation engines as application services.  
-- **Prototype / stub-backed:** most “advanced” consistency/snapshot/reconciliation features are service-level building blocks and docs, but are **not exposed as top-level CLI commands** in `bin/migration-module`.  
-- **Not production-ready yet:** no distributed workers, limited source/target coverage, best-effort conflict/manual-edit semantics.
+- **Реализовано:** прототип рантайма (`validate` → `dry-run` → `execute`/`resume` → `verify`/`report`/`status`) с персистентностью в SQLite и stub-адаптерами.
+- **Реализовано (укрепление пилота):** `system:check`, вход в админку + CSRF, эндпоинты `/health` и `/ready`, раздельные конфигурационные файлы.
+- **Частично реализовано:** реальный Bitrix REST-адаптер (автовключение через env), движки consistency/delta/reconciliation как сервисы приложения.
+- **Прототип / на заглушках:** большинство «продвинутых» функций consistency/snapshot/reconciliation существуют как сервисные блоки и документация, но **не доступны как top-level CLI-команды** в `bin/migration-module`.
+- **Пока не production-ready:** нет распределённых воркеров, ограниченное покрытие source/target, best-effort-семантика конфликтов/ручных правок.
 
-## Architecture Overview
+## Обзор архитектуры
 
 ```text
-Source (StubSourceAdapter | BitrixRestAdapter)
+Источник (StubSourceAdapter | BitrixRestAdapter)
         |
         v
-Extract batches -> plan/diff -> enqueue (SQLite queue)
+Извлечение батчей -> plan/diff -> enqueue (очередь SQLite)
         |
         v
 PrototypeRuntime execute/resume
-  - ID policy
-  - user policy
+  - политика ID
+  - политика пользователей
   - retry / checkpoint / logs
         |
         v
-Target (StubTargetAdapter | BitrixRestAdapter)
+Цель (StubTargetAdapter | BitrixRestAdapter)
         |
         v
 Verify/report/status
 
-SQLite runtime state:
+Состояние рантайма в SQLite:
   jobs, queue, entity_map, user_map, checkpoint, diff, logs, integrity_issues, state
 ```
 
-Additional consistency components exist as PHP services (`SnapshotConsistencyService`, `DeltaSyncEngine`, `ConflictDetectionEngine`, etc.), but they are currently **not wired into the primary CLI entrypoint as standalone commands**.
+Дополнительные компоненты consistency существуют как PHP-сервисы (`SnapshotConsistencyService`, `DeltaSyncEngine`, `ConflictDetectionEngine` и др.), но сейчас они **не подключены к основному CLI entrypoint как отдельные команды**.
 
-## What Actually Works
+## Что реально работает
 
-### Implemented
+### Реализовано
 
-- CLI entrypoint: `bin/migration-module`.  
-- Commands available in `help`:  
-  `validate`, `plan`, `dry-run`, `execute`, `pause`, `resume`, `verify`, `verify-only`, `report`, `status`, `system:check`, plus `migration <subcommand>` helpers (`pause`, `resume`, `retry`, `repair`, `diff`).
-- Prototype runtime pipeline:
-  - config load from `migration.config.yml`
-  - schema init + job creation
-  - plan/diff calculation
-  - queue processing with retry/permanent failure handling
-  - checkpoint + entity mapping + structured logs
-  - verification summary and status/report snapshots
-- SQLite storage with real schema in `db/prototype_schema.sql`.
-- Admin API hardening basics:
-  - session login
-  - CSRF check for POST
-  - `/health` and `/ready`
-  - security headers
-- `system:check` command and API endpoint.
+- CLI entrypoint: `bin/migration-module`.
+- Команды, доступные в `help`:
+  `validate`, `plan`, `dry-run`, `execute`, `pause`, `resume`, `verify`, `verify-only`, `report`, `status`, `system:check`, а также хелперы `migration <subcommand>` (`pause`, `resume`, `retry`, `repair`, `diff`).
+- Конвейер прототип-рантайма:
+  - загрузка конфигурации из `migration.config.yml`
+  - инициализация схемы + создание job
+  - расчёт plan/diff
+  - обработка очереди с retry и постоянными ошибками
+  - checkpoint + mapping сущностей + структурированные логи
+  - summary верификации и снимки status/report
+- Хранилище SQLite с реальной схемой в `db/prototype_schema.sql`.
+- Базовое укрепление Admin API:
+  - вход по сессии
+  - CSRF-проверка для POST
+  - `/health` и `/ready`
+  - security-заголовки
+- Команда `system:check` и API-эндпоинт.
 
-### Partially implemented
+### Частично реализовано
 
-- **Real Bitrix REST adapter auto-enable:** enabled only when both `BITRIX_WEBHOOK_URL` and `BITRIX_WEBHOOK_TOKEN` are set; otherwise stubs are used.
-- **Bitrix entity coverage:** adapter includes specific methods/maps and update-oriented upsert behavior; this is not full production migration coverage.
-- **Consistency layer components:** snapshot/watermark/conflict/reconciliation classes exist and are testable as code units, but are not currently exposed in `bin/migration-module` as the advertised `snapshot:*`, `baseline:*`, `delta:*`, `conflicts:*`, etc.
+- **Автовключение реального Bitrix REST-адаптера:** включается только если заданы и `BITRIX_WEBHOOK_URL`, и `BITRIX_WEBHOOK_TOKEN`; иначе используются заглушки.
+- **Покрытие сущностей Bitrix:** адаптер включает конкретные методы/маппинги и upsert-логику, ориентированную на обновления; это не полное production-покрытие миграции.
+- **Компоненты слоя consistency:** классы snapshot/watermark/conflict/reconciliation существуют и тестируемы как кодовые единицы, но пока не доступны в `bin/migration-module` как заявленные `snapshot:*`, `baseline:*`, `delta:*`, `conflicts:*` и т.д.
 
-### Prototype / Stub-backed
+### Прототип / на заглушках
 
-- Default source/target are stub adapters with deterministic fixture-like data.
-- Many operations console endpoints return synthetic/demo data when no DB-backed path is implemented.
-- Advanced reconciliation and policy orchestration is primarily service-level logic and docs-driven at this stage.
+- Источник и цель по умолчанию — stub-адаптеры с детерминированными fixture-подобными данными.
+- Многие endpoints консоли операций возвращают синтетические/демо-данные, когда нет реализации через БД.
+- Продвинутая reconciliation и policy-оркестрация на этом этапе — в основном сервисная логика и документационно-ориентированный слой.
 
-## Quick Start
+## Быстрый старт
 
 ```bash
 php bin/migration-module validate
@@ -85,11 +85,11 @@ php bin/migration-module status
 php bin/migration-module system:check
 ```
 
-Default config file: `migration.config.yml`.
+Файл конфигурации по умолчанию: `migration.config.yml`.
 
-## CLI Commands
+## CLI-команды
 
-### Top-level commands (actually available)
+### Top-level команды (фактически доступны)
 
 ```text
 help
@@ -111,9 +111,9 @@ migration repair
 migration diff <entity_type>:<source_id>
 ```
 
-### Commands often mentioned in docs but **not available** in `bin/migration-module`
+### Команды, часто упоминаемые в документации, но **недоступные** в `bin/migration-module`
 
-These currently return `Unknown command` at CLI level:
+Сейчас на уровне CLI они возвращают `Unknown command`:
 
 - `snapshot:create`, `snapshot:show`
 - `baseline:plan`, `baseline:execute`
@@ -123,23 +123,23 @@ These currently return `Unknown command` at CLI level:
 - `conflicts:list`, `conflicts:resolve`
 - `watermarks:show`, `state:inspect`, `orphans:list`, `repair:relations`
 
-Related logic exists in `MigrationModule\Cli\MigrationCommands` and consistency services, but not wired into the default executable CLI yet.
+Связанная логика есть в `MigrationModule\Cli\MigrationCommands` и сервисах consistency, но пока не подключена к исполняемому CLI по умолчанию.
 
-## Runtime Modes / Phases
+## Режимы / фазы рантайма
 
-- `validate`: schema/bootstrap checks.
-- `plan`: computes create/update/skip/conflict summary + diff rows.
-- `dry-run`: plan + risk summary, no target writes.
-- `execute`: queues and processes entities.
-- `resume`: reruns executor with resume flag.
-- `verify` / `verify-only`: summary checks (missing/changed + basic relation/file placeholders).
-- `report` / `status`: aggregated counts from SQLite.
+- `validate`: проверки схемы/bootstrap.
+- `plan`: вычисляет summary по create/update/skip/conflict + строки diff.
+- `dry-run`: план + сводка рисков, без записи в target.
+- `execute`: постановка сущностей в очередь и их обработка.
+- `resume`: повторный запуск executor с флагом resume.
+- `verify` / `verify-only`: summary-проверки (missing/changed + базовые заглушки relation/file).
+- `report` / `status`: агрегированные счётчики из SQLite.
 
-## Prototype Storage
+## Хранилище прототипа
 
-Default SQLite path: `.prototype/migration.sqlite`.
+Путь к SQLite по умолчанию: `.prototype/migration.sqlite`.
 
-Schema tables:
+Таблицы схемы:
 
 - `jobs`
 - `queue`
@@ -151,61 +151,61 @@ Schema tables:
 - `integrity_issues`
 - `state`
 
-> Note: tables for `snapshots`, `snapshot_watermarks`, `conflicts`, `reconciliation_queue`, and extended verification models are **not present in the SQLite prototype schema**. Those concepts currently live in in-memory repository/services and documentation.
+> Примечание: таблицы `snapshots`, `snapshot_watermarks`, `conflicts`, `reconciliation_queue` и расширенные модели верификации **отсутствуют в SQLite-схеме прототипа**. Эти концепции сейчас реализованы в in-memory repository/services и документации.
 
-## Adapters
+## Адаптеры
 
-### Stub adapters (default)
+### Stub-адаптеры (по умолчанию)
 
-- `StubSourceAdapter`: entities `users`, `crm`, `tasks`, `files`.
-- `StubTargetAdapter`: in-memory upsert + existence checks.
+- `StubSourceAdapter`: сущности `users`, `crm`, `tasks`, `files`.
+- `StubTargetAdapter`: in-memory upsert + проверки существования.
 
-### Real Bitrix REST adapter (auto-enable)
+### Реальный Bitrix REST-адаптер (автовключение)
 
-Activated when both env vars are present:
+Активируется при наличии обеих env-переменных:
 
 - `BITRIX_WEBHOOK_URL`
 - `BITRIX_WEBHOOK_TOKEN`
 
-Current adapter characteristics:
+Текущие характеристики адаптера:
 
-- Uses REST client with retry/backoff for retryable API errors.
-- Supports mapped list/update methods for selected entity types.
-- Best viewed as pilot integration layer, not full production migration adapter.
+- Использует REST-клиент с retry/backoff для повторяемых API-ошибок.
+- Поддерживает mapped list/update-методы для выбранных типов сущностей.
+- Лучше рассматривать как пилотный интеграционный слой, а не полный production-адаптер миграции.
 
 ## Web UI (Admin Console)
 
-Path: `apps/migration-module/ui/admin/index.php`.
+Путь: `apps/migration-module/ui/admin/index.php`.
 
-What is real:
+Что реально:
 
-- login form (password hash from env)
-- session-based auth
-- CSRF token issuance and validation for POST in API
-- simple runtime counters from SQLite (`jobs`, `queue`, `entity_map`, `diff`, `integrity_issues`)
-- links to `system:check`, `/health`, `/ready`
+- форма входа (хэш пароля из env)
+- аутентификация на базе сессии
+- выдача и валидация CSRF-токена для POST в API
+- простые runtime-счётчики из SQLite (`jobs`, `queue`, `entity_map`, `diff`, `integrity_issues`)
+- ссылки на `system:check`, `/health`, `/ready`
 
-What is prototype/demo:
+Что является прототипом/демо:
 
-- API surface includes multiple monitoring/control endpoints, but many responses are synthetic/mock-style.
-- This is an operational prototype console, not a full production UI product.
+- API-поверхность включает несколько endpoint'ов мониторинга/управления, но многие ответы синтетические/mock-стиля.
+- Это операционная прототип-консоль, а не полноценный production UI-продукт.
 
-## Production Hardening Additions
+## Добавления для production hardening
 
-Implemented additions in current repo:
+Реализованные дополнения в текущем репозитории:
 
-- `system:check` (CLI and admin API).
-- Admin auth and CSRF guard.
-- `/health` and `/ready` endpoints.
-- Split config files:
+- `system:check` (CLI и admin API).
+- Admin auth и CSRF-защита.
+- эндпоинты `/health` и `/ready`.
+- Разделённые конфигурационные файлы:
   - `config/migration.php`
   - `config/runtime.php`
   - `config/bitrix.php`
-- Security headers in admin API bootstrap.
+- Security-заголовки в bootstrap admin API.
 
 ## Snapshot Consistency / Delta Sync / Reconciliation
 
-### What exists in code
+### Что существует в коде
 
 - `SnapshotConsistencyService`
 - `DeltaSyncEngine`
@@ -216,59 +216,59 @@ Implemented additions in current repo:
 - `FileReconciliationService`
 - `EntityStateMachine`
 
-### Current integration level
+### Текущий уровень интеграции
 
-- **Partially implemented:** these engines/services are present and describable.
-- **Not fully wired to executable CLI runtime:** baseline/delta/reconciliation command workflow is not available via `bin/migration-module`.
-- **Storage mismatch:** richer snapshot/conflict/reconciliation models are mostly in in-memory repository abstractions, not in the prototype SQLite schema.
+- **Частично реализовано:** эти движки/сервисы присутствуют и описаны.
+- **Не полностью подключено к исполняемому CLI-рантайму:** workflow команд baseline/delta/reconciliation недоступен через `bin/migration-module`.
+- **Несоответствие хранилища:** более богатые snapshot/conflict/reconciliation-модели в основном находятся в in-memory repository-абстракциях, а не в SQLite-схеме прототипа.
 
-## Conflict & Sync Policy Guarantees
+## Гарантии Conflict & Sync Policy
 
-- Conflict and policy engines provide explicit decisions/types in code.
-- Manual target edit and conflict guarantees are **best-effort** in prototype semantics.
-- No claim of strict no-overwrite guarantee should be treated as production-grade without additional audit trail/transactional controls.
+- Движки конфликтов и политик предоставляют явные решения/типы на уровне кода.
+- Гарантии по ручным правкам target и конфликтам в прототипной семантике — **best-effort**.
+- Любые заявления о строгой гарантии no-overwrite не должны считаться production-уровнем без дополнительного audit trail/транзакционных механизмов.
 
-## Tests
+## Тесты
 
-Run:
+Запуск:
 
 ```bash
 composer test
 ```
 
-Current automated coverage (single prototype script) validates:
+Текущее автоматизированное покрытие (один прототипный скрипт) проверяет:
 
-- config loading + `validate`
+- загрузку конфигурации + `validate`
 - plan/dry-run/execute/resume
-- rerun skip behavior
-- id conflict and user policy behavior
-- verify summary shape
-- schema/runtime consistency basics
+- skip-поведение при повторном запуске
+- конфликт id и поведение user policy
+- форму verify summary
+- базовую согласованность схемы/рантайма
 
-It does **not** provide exhaustive production-level coverage of advanced consistency/reconciliation CLI flows.
+Оно **не** даёт исчерпывающего production-уровня покрытия продвинутых consistency/reconciliation CLI-флоу.
 
-## What changed recently
+## Что изменилось недавно
 
-Verified recent additions reflected in codebase:
+Подтверждённые недавние добавления, отражённые в кодовой базе:
 
-- production hardening primitives (`system:check`, admin auth/CSRF, `/health`, `/ready`)
-- split runtime/migration/bitrix config files
-- real Bitrix REST adapter auto-enable by env
-- consistency-related service layer for snapshot/watermark/delta/reconciliation/conflict/policy
+- примитивы production hardening (`system:check`, admin auth/CSRF, `/health`, `/ready`)
+- разделённые runtime/migration/bitrix-конфиги
+- автовключение реального Bitrix REST-адаптера через env
+- consistency-ориентированный сервисный слой для snapshot/watermark/delta/reconciliation/conflict/policy
 
-But also important:
+Но также важно:
 
-- advanced command surface described in docs is still mostly service-level / not wired in the default CLI entrypoint.
+- продвинутая поверхность команд, описанная в документации, всё ещё в основном сервисного уровня / не подключена в CLI entrypoint по умолчанию.
 
-## Known Prototype Limitations
+## Известные ограничения прототипа
 
-- Not production-ready end-to-end.
-- No distributed worker runtime.
-- Limited real adapter coverage and migration semantics.
-- Advanced consistency lifecycle is partially integrated.
-- Some docs describe target architecture beyond currently executable CLI behavior.
+- Не production-ready end-to-end.
+- Нет распределённого worker-рантайма.
+- Ограниченное покрытие реального адаптера и семантики миграции.
+- Продвинутый consistency lifecycle интегрирован частично.
+- Часть документации описывает целевую архитектуру шире текущего исполняемого поведения CLI.
 
-## Documentation
+## Документация
 
 - `STATUS.md`
 - `docs/prototype-runtime.md`
@@ -277,13 +277,13 @@ But also important:
 - `docs/migration-operations-console.md`
 - `docs/production-migration-guide.md`
 
-Read docs as a mix of:
+Документацию следует читать как смесь:
 
-- current prototype behavior,
-- pilot hardening guidance,
-- and forward-looking architecture plans.
+- текущего поведения прототипа,
+- рекомендаций по укреплению пилота,
+- и перспективных планов архитектуры.
 
-## Audit / Discovery (read-only)
+## Audit / Discovery (только чтение)
 
 Новый namespace CLI для безопасной pre-migration диагностики:
 
@@ -296,8 +296,8 @@ php bin/migration-module audit:velocity --days=30 --sample-size=1000 --output=js
 
 Артефакты:
 
-- `.audit/migration_profile.json` (policy/planning input)
-- `.audit/report.html` (human-readable report with risk flags/strategy hints)
-- `reports/change_velocity_report.json` and `reports/velocity_heatmap.json` (change velocity audit artifacts)
+- `.audit/migration_profile.json` (вход policy/planning)
+- `.audit/report.html` (человекочитаемый отчёт с risk flags/strategy hints)
+- `reports/change_velocity_report.json` и `reports/velocity_heatmap.json` (артефакты audit change velocity)
 
 Подробности: `docs/audit-discovery.md`.
