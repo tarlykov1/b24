@@ -7,11 +7,13 @@ namespace MigrationModule\Infrastructure\Http;
 use DateInterval;
 use DateTimeImmutable;
 use PDO;
+use MigrationModule\Application\Security\SecurityGovernanceService;
 
 final class OperationsConsoleApi
 {
     public function __construct(
         private readonly ?PDO $pdo,
+        private readonly ?SecurityGovernanceService $security = null,
     ) {
     }
 
@@ -59,7 +61,7 @@ final class OperationsConsoleApi
                 'integrityRepairSimulation' => true,
                 'replaySafetyGuard' => true,
             ],
-            'roles' => ['operator', 'architect', 'support', 'admin'],
+            'roles' => $this->security?->roles() ?? ['operator', 'architect', 'support', 'admin'],
             'defaultRole' => 'operator',
             'realtime' => ['transport' => 'sse', 'fallback' => 'polling'],
         ];

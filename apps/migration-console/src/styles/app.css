@@ -24,3 +24,5 @@ body { margin: 0; font-family: Inter, Arial, sans-serif; background: #0b1020; co
 .badge-row { margin-bottom: 10px; }
 .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#1a2338; border:1px solid #2e4166; color:#aac0df; font-size:12px; }
 .link-like { background:none; border:none; color:#7db4ff; cursor:pointer; padding:0; }
+
+.security-context { position: sticky; top: 0; z-index: 2; background: #111827; border: 1px solid #334155; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; color: #e2e8f0; }
