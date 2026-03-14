@@ -26,6 +26,11 @@ if (is_file($db)) {
 }
 
 $progress = $summary['queue'] > 0 ? min(100, (int) round(($summary['done'] / $summary['queue']) * 100)) : 0;
+
+$auditProfile = null;
+if (is_file(__DIR__ . '/../../../../.audit/migration_profile.json')) {
+    $auditProfile = json_decode((string) file_get_contents(__DIR__ . '/../../../../.audit/migration_profile.json'), true);
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -50,6 +55,20 @@ $progress = $summary['queue'] > 0 ? min(100, (int) round(($summary['done'] / $su
 <div style="background:#eee;height:20px;width:100%;border-radius:8px;overflow:hidden">
   <div style="height:20px;width:<?= $progress ?>%;background:#3a7;color:#fff;text-align:center"><?= $progress ?>%</div>
 </div>
+<?php if (is_array($auditProfile)): ?>
+<h3>Audit discovery</h3>
+<ul>
+  <li>Portal users: <b><?= (int) ($auditProfile['users']['total'] ?? 0) ?></b> (active <?= (int) ($auditProfile['users']['active'] ?? 0) ?>)</li>
+  <li>Tasks: <b><?= (int) ($auditProfile['tasks']['total'] ?? 0) ?></b> | with files <?= (int) ($auditProfile['tasks']['with_files'] ?? 0) ?></li>
+  <li>File volume: <b><?= (float) ($auditProfile['files']['total_size_gb'] ?? 0.0) ?> GB</b></li>
+  <li>Readiness score: <b><?= (int) ($auditProfile['raw']['readiness_score'] ?? 0) ?>/100</b></li>
+  <li>Risk summary: <b><?= htmlspecialchars((string) ($auditProfile['raw']['summary']['risk_level'] ?? 'UNKNOWN')) ?></b></li>
+</ul>
+<p><a href="../../../../.audit/report.html" target="_blank">Open HTML audit report</a> | <a href="api.php/audit/summary">API risk summary</a></p>
+<?php else: ?>
+<p>No audit profile yet. Run <code>php bin/migration-module audit:run</code>.</p>
+<?php endif; ?>
+
 <h3>Runtime controls</h3>
 <p>Кнопки API: <code>resume</code>, <code>retry failed</code>, <code>skip failed</code> доступны через <code>/jobs/action</code> с typed confirmation.</p>
 <p><a href="api.php/system:check">system:check</a> | <a href="api.php/health">health</a> | <a href="api.php/ready">ready</a></p>

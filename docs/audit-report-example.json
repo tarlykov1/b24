@@ -1,0 +1,25 @@
+{
+  "portal_profile": {
+    "bitrix_version": "23.0.0",
+    "modules": ["crm", "tasks", "disk", "intranet"],
+    "database_size": "12.4 GB",
+    "file_storage_size": "180 GB",
+    "users_total": 7000,
+    "users_active": 1300
+  },
+  "summary": {
+    "risk_level": "MEDIUM",
+    "risks": [
+      "large file storage",
+      "many task attachments",
+      "inactive owners detected"
+    ]
+  },
+  "strategy_hints": {
+    "migrate_users_policy": "active + owners_only",
+    "tasks_strategy": "migrate_metadata_first",
+    "files_strategy": "separate_bulk_transfer",
+    "delta_sync_required": true,
+    "recommended_cutoff_window": "weekend"
+  }
+}

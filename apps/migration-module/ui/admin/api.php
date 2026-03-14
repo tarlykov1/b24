@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\Application\Security\SecurityContext;
 use MigrationModule\Application\Security\SecurityGovernanceService;
@@ -119,7 +120,13 @@ if ($path === '/jobs/action' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-if ($path === '/meta') {
+if ($path === '/audit/portal') {
+    $response = (new AuditDiscoveryService())->run('portal');
+} elseif ($path === '/audit/summary') {
+    $response = (new AuditDiscoveryService())->run('summary');
+} elseif ($path === '/audit/report') {
+    $response = (new AuditDiscoveryService())->run('report');
+} elseif ($path === '/meta') {
     $response = $api->meta();
     $response['dangerous_actions'] = $dangerousActions;
 } elseif ($path === '/system:check') {

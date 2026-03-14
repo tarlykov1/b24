@@ -282,3 +282,20 @@ Read docs as a mix of:
 - current prototype behavior,
 - pilot hardening guidance,
 - and forward-looking architecture plans.
+
+## Audit / Discovery (read-only)
+
+Новый namespace CLI для безопасной pre-migration диагностики:
+
+```bash
+php bin/migration-module audit:run
+php bin/migration-module audit:summary
+php bin/migration-module audit:report
+```
+
+Артефакты:
+
+- `.audit/migration_profile.json` (policy/planning input)
+- `.audit/report.html` (human-readable report with risk flags/strategy hints)
+
+Подробности: `docs/audit-discovery.md`.
