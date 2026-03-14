@@ -6,13 +6,13 @@ rate_limit:
 batch_size: 100
 chunk_size: 500
 retry_policy:
-  max_retries: 6
+  max_retries: 3
   base_delay_ms: 200
-  max_delay_ms: 5000
-api_timeout: 20
-parallel_workers: 4
-queue_max_size: 2000
-delta_sync_interval: 30
-freeze_mode_enabled: true
-conflict_strategy: preserve_source_id
-logging_level: info
+  max_delay_ms: 2000
+parallel_workers: 2
+storage:
+  path: .prototype/migration.sqlite
+user_policy:
+  cutoff_date: 2024-01-01T00:00:00+00:00
+  inactive_strategy: transfer_tasks_to_system_user
+  system_user_id: system

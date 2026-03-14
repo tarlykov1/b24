@@ -10,10 +10,14 @@
             "MigrationModule\\": "apps/migration-module/src/"
         }
     },
-    "require-dev": {
-        "phpunit/phpunit": "^10.5"
-    },
     "scripts": {
-        "test": "phpunit"
+        "test": "php tests/PrototypeTest.php",
+        "cli:help": "php bin/migration-module help",
+        "cli:validate": "php bin/migration-module validate",
+        "cli:dry-run": "php bin/migration-module dry-run",
+        "cli:execute": "php bin/migration-module execute",
+        "cli:resume": "php bin/migration-module resume",
+        "cli:verify": "php bin/migration-module verify",
+        "cli:report": "php bin/migration-module report"
     }
 }
