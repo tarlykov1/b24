@@ -50,13 +50,14 @@ $audits = [
     'audit:files' => 'files',
     'audit:crm' => 'crm',
     'audit:permissions' => 'permissions',
-    'audit:ownership' => 'ownership',
+    'audit:linkage' => 'linkage',
     'audit:summary' => 'summary',
     'audit:report' => 'report',
     'audit:run' => 'run',
 ];
 if (isset($audits[$command])) {
-    out((new AuditDiscoveryService())->run($audits[$command]));
+    $deep = in_array('--deep', $argv, true);
+    out((new AuditDiscoveryService())->run($audits[$command], $deep));
 }
 
 try {
@@ -83,7 +84,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:ownership', 'audit:summary', 'audit:report', 'audit:run', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:linkage', 'audit:summary', 'audit:report', 'audit:run', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {

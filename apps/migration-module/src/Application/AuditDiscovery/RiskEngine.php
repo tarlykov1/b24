@@ -17,12 +17,12 @@ final class RiskEngine
         $orphanFiles = (int) ($profile['files']['orphan_files'] ?? 0);
         $attachments = (int) ($profile['tasks']['with_files'] ?? 0);
 
-        $ownership = (array) ($profile['ownership'] ?? []);
-        $ownershipMetrics = (array) ($ownership['metrics'] ?? []);
-        $filesOwnedByInactive = (int) ($ownershipMetrics['files_owned_by_inactive_users'] ?? 0);
-        $tasksOwnedByInactive = (int) ($ownershipMetrics['tasks_owned_by_inactive_users'] ?? 0);
-        $aclInvalidEntries = (int) ($ownershipMetrics['disk_acl_invalid_entries'] ?? ($profile['permissions']['disk_acl_invalid_entries'] ?? 0));
-        $inactiveShare = ($filesOwnedByInactive / $filesTotal) * 100;
+        $linkage = (array) ($profile['linkage'] ?? []);
+        $tasksWithCommentAttachments = (int) ($linkage['tasks_with_comment_attachments'] ?? 0);
+        $filesMultiLinked = (int) ($linkage['files_multi_linked'] ?? 0);
+        $orphanAttachmentReferences = (int) ($linkage['orphan_attachment_references'] ?? 0);
+        $diskObjectsWithoutContext = (int) ($linkage['disk_objects_without_attached_context'] ?? 0);
+        $attachmentTypeCount = count((array) ($linkage['attachment_type_distribution'] ?? []));
 
         if ($tasks > 200000) {
             $score += 4;
@@ -66,6 +66,31 @@ final class RiskEngine
         if ($attachments > 30000) {
             $score += 2;
             $reasons[] = 'many task attachments';
+        }
+
+        if ($tasksWithCommentAttachments > 5000) {
+            $score += 2;
+            $reasons[] = 'comment-file migration risk';
+        }
+
+        if ($filesMultiLinked > 2000) {
+            $score += 3;
+            $reasons[] = 'multi-context disk linkage';
+        }
+
+        if ($orphanAttachmentReferences > 0) {
+            $score += 3;
+            $reasons[] = 'orphan attachment graph';
+        }
+
+        if ($diskObjectsWithoutContext > 0) {
+            $score += 2;
+            $reasons[] = 'disk objects without attached context';
+        }
+
+        if ($attachmentTypeCount > 4) {
+            $score += 2;
+            $reasons[] = 'complex attachment topology';
         }
 
         $risk = match (true) {

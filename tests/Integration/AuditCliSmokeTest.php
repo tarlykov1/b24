@@ -5,7 +5,7 @@ declare(strict_types=1);
 $commands = [
     'php bin/migration-module audit:run',
     'php bin/migration-module audit:summary',
-    'php bin/migration-module audit:ownership',
+    'php bin/migration-module audit:linkage',
     'php bin/migration-module audit:report',
 ];
 

@@ -2,7 +2,7 @@ CREATE TABLE b_user (ID INTEGER PRIMARY KEY, EMAIL TEXT, LOGIN TEXT, ACTIVE TEXT
 CREATE TABLE b_tasks (ID INTEGER PRIMARY KEY, STATUS INTEGER, RESPONSIBLE_ID INTEGER, GROUP_ID INTEGER);
 CREATE TABLE b_tasks_comment (ID INTEGER PRIMARY KEY, TASK_ID INTEGER, AUTHOR_ID INTEGER);
 CREATE TABLE b_file (ID INTEGER PRIMARY KEY, FILE_SIZE INTEGER, CREATED_BY INTEGER);
-CREATE TABLE b_disk_object (ID INTEGER PRIMARY KEY, FILE_ID INTEGER, CREATED_BY INTEGER, PARENT_ID INTEGER, TYPE INTEGER, STORAGE_ID INTEGER);
+CREATE TABLE b_disk_object (ID INTEGER PRIMARY KEY, FILE_ID INTEGER, PARENT_ID INTEGER);
 CREATE TABLE b_disk_attached_object (ID INTEGER PRIMARY KEY, OBJECT_ID INTEGER, MODULE_ID TEXT, ENTITY_ID INTEGER);
 CREATE TABLE b_disk_right (ID INTEGER PRIMARY KEY, OBJECT_ID INTEGER, ACCESS_CODE TEXT);
 CREATE TABLE b_sonet_group (ID INTEGER PRIMARY KEY);
@@ -18,14 +18,37 @@ INSERT INTO b_user(ID,EMAIL,LOGIN,ACTIVE,BLOCKED) VALUES
 (1,'u1@example.test','u1','Y','N'),
 (2,'','u2','N','Y'),
 (3,'u3@example.test','','Y','N');
+
 INSERT INTO b_tasks(ID,STATUS,RESPONSIBLE_ID,GROUP_ID) VALUES
 (10,2,1,100),(11,5,0,100),(12,2,2,101);
-INSERT INTO b_tasks_comment(ID,TASK_ID,AUTHOR_ID) VALUES (1,10,1),(2,10,0),(3,12,2);
-INSERT INTO b_file(ID,FILE_SIZE,CREATED_BY) VALUES (1,1024,1),(2,2048,2),(3,1024,0);
-INSERT INTO b_disk_object(ID,FILE_ID,CREATED_BY,PARENT_ID,TYPE,STORAGE_ID) VALUES
-(1,1,1,NULL,2,1),(2,2,2,1,3,1),(3,999,2,999,3,2);
-INSERT INTO b_disk_attached_object(ID,OBJECT_ID,MODULE_ID,ENTITY_ID) VALUES (1,1,'tasks',10),(2,99,'tasks',11),(3,2,'tasks',999);
-INSERT INTO b_disk_right(ID,OBJECT_ID,ACCESS_CODE) VALUES (1,1,'U999'),(2,1,'SG999');
+
+INSERT INTO b_tasks_comment(ID,TASK_ID,AUTHOR_ID) VALUES
+(1,10,1),(2,10,NULL),(3,12,2),(4,999,1);
+
+INSERT INTO b_file(ID,FILE_SIZE,CREATED_BY) VALUES
+(1,1024,1),(2,2048,2),(3,1024,1),(4,4096,1);
+
+INSERT INTO b_disk_object(ID,FILE_ID,PARENT_ID) VALUES
+(1,1,500),(2,2,501),(3,3,NULL),(4,4,500);
+
+-- scenarios:
+-- task with direct attachments
+-- task with comment attachments
+-- disk object with multiple attached contexts
+-- orphan attachment reference
+-- file linked to multiple tasks
+-- file linked to task + comment + disk folder
+INSERT INTO b_disk_attached_object(ID,OBJECT_ID,MODULE_ID,ENTITY_ID) VALUES
+(1,1,'tasks',10),
+(2,1,'tasks',12),
+(3,1,'task_comment',1),
+(4,2,'tasks',10),
+(5,2,'task_comment',2),
+(6,2,'disk',500),
+(7,4,'tasks',10),
+(8,99,'tasks',11),
+(9,4,'tasks',10);
+
 INSERT INTO b_sonet_group(ID) VALUES (100),(101);
 INSERT INTO b_sonet_user2group(ID,USER_ID,GROUP_ID) VALUES (1,1,100),(2,2,100);
 INSERT INTO b_user_field(ID,ENTITY_ID) VALUES (1,'CRM_DEAL'),(2,'CRM_CONTACT');

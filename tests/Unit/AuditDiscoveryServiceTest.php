@@ -57,7 +57,7 @@ it('generates report artifacts on audit run', function (): void {
 });
 
 
-it('runs ownership audit and returns acl/orphan metrics', function (): void {
+it('builds linkage audit metrics and strategy hints', function (): void {
     $dbPath = sys_get_temp_dir() . '/audit-fixture-' . uniqid() . '.sqlite';
     $pdo = new PDO('sqlite:' . $dbPath);
     $sql = file_get_contents(__DIR__ . '/../Fixtures/audit_fixture.sql');
@@ -67,11 +67,14 @@ it('runs ownership audit and returns acl/orphan metrics', function (): void {
     putenv('BITRIX_UPLOAD_PATH=' . __DIR__ . '/../Fixtures');
 
     $service = new AuditDiscoveryService();
-    $ownership = $service->run('ownership');
+    $linkage = $service->run('linkage');
 
-    assert(($ownership['metrics']['files_owned_by_inactive_users'] ?? 0) > 0);
-    assert(($ownership['metrics']['disk_acl_invalid_entries'] ?? 0) > 0);
-    assert(($ownership['orphans']['tasks_referencing_missing_files'] ?? 0) > 0);
+    assert(($linkage['tasks_with_attachments'] ?? 0) > 0);
+    assert(($linkage['tasks_with_comment_attachments'] ?? 0) > 0);
+
+    $full = $service->run('run', true);
+    assert(($full['deep_mode'] ?? false) === true);
+    assert(isset($full['strategy_hints']['file_migration_strategy']));
 
     @unlink($dbPath);
 });

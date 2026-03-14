@@ -11,10 +11,7 @@ final class HtmlReportRenderer
         $json = htmlspecialchars((string) json_encode($audit, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES);
         $risk = htmlspecialchars((string) ($audit['summary']['risk_level'] ?? 'UNKNOWN'), ENT_QUOTES);
         $score = (int) ($audit['readiness_score'] ?? 0);
-        $ownership = (array) ($audit['ownership'] ?? []);
-        $metrics = (array) ($ownership['metrics'] ?? []);
-        $orphans = (array) ($ownership['orphans'] ?? []);
-        $acl = (array) ($ownership['acl_graph'] ?? []);
+        $linkage = (array) ($audit['linkage'] ?? []);
 
         return <<<HTML
 <!doctype html>
@@ -49,6 +46,8 @@ pre{overflow:auto;background:#111;color:#ddd;padding:12px;border-radius:8px}
 <p>tasks by responsible user</p><ul>{$this->pairs((array) ($ownership['charts']['tasks_by_responsible_user'] ?? []))}</ul>
 </div>
 <div class="card"><h2>Strategy hints</h2><ul>{$this->hintsList($audit['strategy_hints'] ?? [])}</ul></div>
+<div class="card"><h2>Task / File Linkage Risks</h2><ul>{$this->linkageList($linkage)}</ul></div>
+<div class="card"><h2>Linkage charts source</h2><ul>{$this->chartSourceList($linkage)}</ul></div>
 <div class="card"><h2>Data tables & charts source</h2><p>JSON below is used by charts/tables in admin UI.</p></div>
 <pre>{$json}</pre>
 </body>
@@ -60,27 +59,35 @@ HTML;
     {
         $items = '';
         foreach ($hints as $k => $v) {
-            $value = is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : (is_bool($v) ? ($v ? 'true' : 'false') : (string) $v);
-            $items .= '<li><strong>' . htmlspecialchars((string) $k, ENT_QUOTES) . '</strong>: ' . htmlspecialchars((string) $value, ENT_QUOTES) . '</li>';
+            $items .= '<li><strong>' . htmlspecialchars((string) $k, ENT_QUOTES) . '</strong>: ' . htmlspecialchars(is_bool($v) ? ($v ? 'true' : 'false') : (string) json_encode($v, JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</li>';
         }
 
         return $items;
     }
 
-    private function pairs(array $pairs): string
+    private function linkageList(array $linkage): string
     {
+        $entries = [
+            'tasks with files' => (int) ($linkage['tasks_with_attachments'] ?? 0),
+            'tasks with comment files' => (int) ($linkage['tasks_with_comment_attachments'] ?? 0),
+            'multi-linked files' => (int) ($linkage['files_multi_linked'] ?? 0),
+            'orphan attachment references' => (int) ($linkage['orphan_attachment_references'] ?? 0),
+            'attachment topology complexity (types)' => count((array) ($linkage['attachment_type_distribution'] ?? [])),
+        ];
+
         $items = '';
-        foreach ($pairs as $item) {
-            $owner = htmlspecialchars((string) ($item['owner_id'] ?? '0'), ENT_QUOTES);
-            $count = (int) ($item['count'] ?? 0);
-            $items .= "<li>{$owner}: {$count}</li>";
+        foreach ($entries as $label => $value) {
+            $items .= '<li><strong>' . htmlspecialchars($label, ENT_QUOTES) . '</strong>: ' . $value . '</li>';
         }
 
         return $items;
     }
 
-    private function num(int|float $value): string
+    private function chartSourceList(array $linkage): string
     {
-        return number_format((float) $value, 0, '.', ' ');
+        return '<li>attachments per task: linkage.attachments_per_task_top</li>'
+            . '<li>files by linkage type: linkage.attachment_type_distribution</li>'
+            . '<li>attachment source distribution: linkage.attachment_type_distribution</li>'
+            . '<li>multi-linked files distribution: linkage.raw.files_* metrics</li>';
     }
 }
