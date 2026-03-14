@@ -31,6 +31,20 @@ pre{overflow:auto;background:#111;color:#ddd;padding:12px;border-radius:8px}
 <h1>Bitrix Discovery Audit Report</h1>
 <div class="card"><h2>Risk Flags</h2><p class="flag">Risk level: {$risk}</p></div>
 <div class="card"><h2>Migration readiness score</h2><p class="good">{$score}/100</p></div>
+<div class="card"><h2>Ownership & ACL Risks</h2>
+<ul>
+<li>files owned by inactive users: <b>{$this->num($metrics['files_owned_by_inactive_users'] ?? 0)}</b></li>
+<li>tasks owned by inactive users: <b>{$this->num($metrics['tasks_owned_by_inactive_users'] ?? 0)}</b></li>
+<li>ACL anomalies: <b>{$this->num($metrics['disk_acl_invalid_entries'] ?? 0)}</b></li>
+<li>orphan ownership objects: <b>{$this->num(array_sum(array_map('intval', $orphans)))}</b></li>
+<li>broken disk inheritance: <b>{$this->num($acl['broken_acl_inheritance'] ?? 0)}</b></li>
+</ul>
+</div>
+<div class="card"><h2>Ownership charts data</h2>
+<p>ownership distribution</p><ul>{$this->pairs((array) ($ownership['charts']['ownership_distribution'] ?? []))}</ul>
+<p>file ownership by user</p><ul>{$this->pairs((array) ($ownership['charts']['file_ownership_by_user'] ?? []))}</ul>
+<p>tasks by responsible user</p><ul>{$this->pairs((array) ($ownership['charts']['tasks_by_responsible_user'] ?? []))}</ul>
+</div>
 <div class="card"><h2>Strategy hints</h2><ul>{$this->hintsList($audit['strategy_hints'] ?? [])}</ul></div>
 <div class="card"><h2>Task / File Linkage Risks</h2><ul>{$this->linkageList($linkage)}</ul></div>
 <div class="card"><h2>Linkage charts source</h2><ul>{$this->chartSourceList($linkage)}</ul></div>

@@ -63,6 +63,10 @@ if (is_file(__DIR__ . '/../../../../.audit/migration_profile.json')) {
   <li>File volume: <b><?= (float) ($auditProfile['files']['total_size_gb'] ?? 0.0) ?> GB</b></li>
   <li>Readiness score: <b><?= (int) ($auditProfile['raw']['readiness_score'] ?? 0) ?>/100</b></li>
   <li>Risk summary: <b><?= htmlspecialchars((string) ($auditProfile['raw']['summary']['risk_level'] ?? 'UNKNOWN')) ?></b></li>
+  <li>Ownership Risks: <b><?= (int) ($auditProfile['ownership']['files_owned_by_inactive_users'] ?? 0) ?></b> files (inactive owners), tasks inactive owners <?= (int) ($auditProfile['ownership']['tasks_owned_by_inactive_users'] ?? 0) ?></li>
+  <li>ACL Integrity: invalid ACL entries <b><?= (int) ($auditProfile['raw']['ownership']['metrics']['disk_acl_invalid_entries'] ?? 0) ?></b></li>
+  <li>Inactive Owners: total affected objects <b><?= (int) (($auditProfile['ownership']['files_owned_by_inactive_users'] ?? 0) + ($auditProfile['ownership']['tasks_owned_by_inactive_users'] ?? 0)) ?></b></li>
+  <li>Orphan Objects: <b><?= (int) ($auditProfile['ownership']['orphan_files'] ?? 0) ?></b></li>
 </ul>
 <p><a href="../../../../.audit/report.html" target="_blank">Open HTML audit report</a> | <a href="api.php/audit/summary">API risk summary</a></p>
 
