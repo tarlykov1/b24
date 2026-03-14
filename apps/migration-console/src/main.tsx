@@ -16,6 +16,13 @@ import {
   MappingPage,
   ReplayPage,
   WorkersPage,
+  SecurityHubPage,
+  RoleMatrixPage,
+  ApprovalQueuePage,
+  AuditExplorerPage,
+  SessionSecurityPage,
+  PolicySimulatorPage,
+  IncidentReviewPage,
 } from './pages/pages';
 import './styles/app.css';
 
@@ -39,6 +46,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="diff" element={<DiffPage />} />
             <Route path="replay" element={<ReplayPage />} />
             <Route path="health" element={<HealthPage />} />
+            <Route path="security" element={<SecurityHubPage />} />
+            <Route path="security/roles" element={<RoleMatrixPage />} />
+            <Route path="security/approvals" element={<ApprovalQueuePage />} />
+            <Route path="security/audit" element={<AuditExplorerPage />} />
+            <Route path="security/sessions" element={<SessionSecurityPage />} />
+            <Route path="security/policy" element={<PolicySimulatorPage />} />
+            <Route path="security/incidents" element={<IncidentReviewPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

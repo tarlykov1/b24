@@ -129,3 +129,38 @@ export function HealthPage() {
   const { data } = useApi<{ throughputPerSec: number; eventRate: number; queueDepth: number; processingLagSec: number; retriesPerMin: number; adaptiveThrottlingState: string; safeMode: boolean; legacyApiPressure: { rpmLimit: number; currentRpm: number; backoffMs: number; protectedSyncWindow: string } }>('/system-health');
   return <section><h2>System Health / Throughput / Queue Pressure</h2><div className="metric-grid"><MetricCard title="throughput/s" value={data?.throughputPerSec ?? 0} /><MetricCard title="eventRate" value={data?.eventRate ?? 0} /><MetricCard title="queueDepth" value={data?.queueDepth ?? 0} /><MetricCard title="lagSec" value={data?.processingLagSec ?? 0} /><MetricCard title="retries/min" value={data?.retriesPerMin ?? 0} /><MetricCard title="throttling" value={data?.adaptiveThrottlingState ?? '-'} /><MetricCard title="safe mode" value={data?.safeMode ? 'enabled' : 'disabled'} /></div><h3>Legacy API pressure protection</h3><DataTable columns={['rpmLimit', 'currentRpm', 'backoffMs', 'protectedSyncWindow']} rows={data ? [[data.legacyApiPressure.rpmLimit, data.legacyApiPressure.currentRpm, data.legacyApiPressure.backoffMs, data.legacyApiPressure.protectedSyncWindow]] : []} /></section>;
 }
+
+export function SecurityHubPage() {
+  const { data } = useApi<{ currentContext: { tenantId: string; workspaceId: string; environment: string; roles: string[] }; approvalQueue: Array<{ approvalId: string; actionType: string; risk: string; status: string; expiresAt: string }>; auditEventsTotal: number; activeLocks: Array<{ resourceType: string; resourceId: string; ownerActorId: string }> }>('/security/governance');
+  return <section><h2>Security / Governance Hub</h2><div className="metric-grid"><MetricCard title="tenant" value={data?.currentContext.tenantId ?? '-'} /><MetricCard title="workspace" value={data?.currentContext.workspaceId ?? '-'} /><MetricCard title="environment" value={data?.currentContext.environment ?? '-'} /><MetricCard title="audit events" value={data?.auditEventsTotal ?? 0} /><MetricCard title="pending approvals" value={(data?.approvalQueue ?? []).filter((a) => a.status === 'pending').length} /><MetricCard title="active locks" value={data?.activeLocks.length ?? 0} /></div></section>;
+}
+
+export function RoleMatrixPage() {
+  const { data } = useApi<{ roleMatrix: Record<string, string[]> }>('/security/governance');
+  return <section><h2>Role Matrix</h2><DataTable columns={['Role', 'Permissions']} rows={Object.entries((data?.roleMatrix ?? {}) as Record<string, string[]>).map(([role, perms]: [string, string[]]) => [role, perms.join(', ')])} /></section>;
+}
+
+export function ApprovalQueuePage() {
+  const { data } = useApi<{ approvalQueue: Array<{ approvalId: string; actionType: string; reason: string; risk: string; status: string; requestedBy: string; quorumRequired: number; expiresAt: string }> }>('/security/governance');
+  return <section><h2>Approval Queue</h2><DataTable columns={['approvalId', 'action', 'risk', 'status', 'requestedBy', 'quorum', 'expires']} rows={(data?.approvalQueue ?? []).map((a: { approvalId: string; actionType: string; risk: string; status: string; requestedBy: string; quorumRequired: number; expiresAt: string }) => [a.approvalId, a.actionType, a.risk, a.status, a.requestedBy, a.quorumRequired, a.expiresAt])} /></section>;
+}
+
+export function AuditExplorerPage() {
+  const { data } = useApi<{ items: Array<{ eventId: string; timestamp: string; actorId: string; actionType: string; resultStatus: string; riskScore: number }> }>('/audit/search');
+  return <section><h2>Audit Explorer</h2><DataTable columns={['event', 'timestamp', 'actor', 'action', 'result', 'risk']} rows={(data?.items ?? []).map((e: { eventId: string; timestamp: string; actorId: string; actionType: string; resultStatus: string; riskScore: number }) => [e.eventId, e.timestamp, e.actorId, e.actionType, e.resultStatus, e.riskScore])} /></section>;
+}
+
+export function SessionSecurityPage() {
+  const { data } = useApi<{ breakGlassSessions: Array<{ sessionId: string; actorId: string; status: string; expiresAt: string }> }>('/security/governance');
+  return <section><h2>Session Security</h2><p>Sensitive mode and step-up auth are policy controlled.</p><DataTable columns={['breakGlassSession', 'actor', 'status', 'expiresAt']} rows={(data?.breakGlassSessions ?? []).map((s: { sessionId: string; actorId: string; status: string; expiresAt: string }) => [s.sessionId, s.actorId, s.status, s.expiresAt])} /></section>;
+}
+
+export function PolicySimulatorPage() {
+  const { data } = useApi<{ capabilities: Record<string, { allowed: boolean; approvalRequired: boolean; reasons: string[] }> }>('/security/capabilities');
+  return <section><h2>Policy Simulator</h2><DataTable columns={['permission', 'allowed', 'approvalRequired', 'reason']} rows={Object.entries((data?.capabilities ?? {}) as Record<string, { allowed: boolean; approvalRequired: boolean; reasons: string[] }>).map(([p, d]: [string, { allowed: boolean; approvalRequired: boolean; reasons: string[] }]) => [p, d.allowed ? 'yes' : 'no', d.approvalRequired ? 'yes' : 'no', d.reasons.join('; ')])} /></section>;
+}
+
+export function IncidentReviewPage() {
+  const { data } = useApi<{ items: Array<{ timestamp: string; actionType: string; correlationId: string; traceId: string; actorId: string }> }>('/audit/search');
+  return <section><h2>Incident Review</h2><p>Timeline links operator action ↔ backend decision ↔ runtime traces.</p><DataTable columns={['timestamp', 'action', 'actor', 'correlation', 'trace']} rows={(data?.items ?? []).map((i: { timestamp: string; actionType: string; actorId: string; correlationId: string; traceId: string }) => [i.timestamp, i.actionType, i.actorId, i.correlationId, i.traceId])} /></section>;
+}

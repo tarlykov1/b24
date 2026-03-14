@@ -14,7 +14,7 @@ interface ConsoleState {
 export const useConsoleStore = create<ConsoleState>((set) => ({
   selectedJobId: undefined,
   fallbackMode: false,
-  selectedRole: 'operator',
+  selectedRole: 'MigrationOperator',
   featureFlags: {},
   setSelectedJobId: (selectedJobId) => set({ selectedJobId }),
   setFallbackMode: (fallbackMode) => set({ fallbackMode }),
