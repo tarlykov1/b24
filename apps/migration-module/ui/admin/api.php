@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\Application\Security\SecurityContext;
 use MigrationModule\Application\Security\SecurityGovernanceService;
+use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
+use MigrationModule\Infrastructure\Http\AdminAuth;
 use MigrationModule\Infrastructure\Http\OperationsConsoleApi;
 
 $vendorAutoload = __DIR__ . '/../../../../vendor/autoload.php';
@@ -22,8 +25,12 @@ if (is_file($vendorAutoload)) {
     });
 }
 
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'self'; frame-ancestors 'none'");
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Tenant-Id, X-Workspace-Id');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CSRF-Token');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -34,6 +41,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $path = preg_replace('#^.*?/api\.php#', '', $path) ?: '/';
 
+$auth = new AdminAuth();
+$query = array_merge($_GET, $_POST, json_decode((string) file_get_contents('php://input'), true) ?? []);
+
+if ($path === '/health' || $path === '/ready') {
+    $client = null;
+    if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
+        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
+    }
+    $service = new SystemCheckService($client);
+    $response = $service->check(__DIR__ . '/../../../../.prototype/migration.sqlite');
+    if ($path === '/ready' && (($response['ok'] ?? false) !== true)) {
+        http_response_code(503);
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($path === '/auth/login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $password = (string) ($query['password'] ?? '');
+    $ok = $auth->login($password);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => $ok, 'csrf' => $ok ? $auth->csrfToken() : null], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($path === '/auth/logout' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $auth->logout();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => true], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$auth->requireAuth();
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$auth->validateCsrf($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($query['csrf'] ?? null))) {
+    http_response_code(403);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => 'csrf_invalid']);
+    exit;
+}
+
 $dbPath = __DIR__ . '/../../../../.prototype/migration.sqlite';
 $pdo = null;
 if (is_file($dbPath)) {
@@ -41,13 +89,12 @@ if (is_file($dbPath)) {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 }
 
-$query = array_merge($_GET, json_decode((string) file_get_contents('php://input'), true) ?? []);
 $security = new SecurityGovernanceService();
 $api = new OperationsConsoleApi($pdo, $security);
 
-$role = (string) ($query['role'] ?? 'MigrationOperator');
+$role = (string) ($query['role'] ?? 'MigrationAdmin');
 $context = new SecurityContext(
-    actorId: (string) ($query['actorId'] ?? 'operator-1'),
+    actorId: (string) ($query['actorId'] ?? 'admin-1'),
     tenantId: (string) ($query['tenantId'] ?? 'tenant-alpha'),
     workspaceId: (string) ($query['workspaceId'] ?? 'ws-core'),
     projectId: (string) ($query['projectId'] ?? 'project-crm'),
@@ -56,131 +103,34 @@ $context = new SecurityContext(
     breakGlassActive: (bool) ($query['breakGlassActive'] ?? false),
 );
 
-if ($path === '/stream') {
-    $topic = (string) ($query['topic'] ?? 'logs');
-    header('Content-Type: text/event-stream');
-    header('Cache-Control: no-cache');
-    header('Connection: keep-alive');
-
-    for ($i = 0; $i < 20; ++$i) {
-        $payload = match ($topic) {
-            'workers' => $api->workers($query),
-            'dashboard' => $api->dashboard($query['jobId'] ?? null),
-            default => $api->logs($query),
-        };
-        echo "event: {$topic}\n";
-        echo 'data: ' . json_encode(['topic' => $topic, 'data' => $payload, 'ts' => date(DATE_ATOM)], JSON_THROW_ON_ERROR) . "\n\n";
-        @ob_flush();
-        flush();
-        usleep(1000 * 1200);
+$dangerousActions = ['execute migration', 'rollback', 'force repair', 'replay', 'delete skipped entities'];
+if ($path === '/jobs/action' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string) ($query['action'] ?? '');
+    if (in_array($action, ['execute', 'rollback', 'force_repair', 'replay', 'delete_skipped'], true)) {
+        $typed = mb_strtolower(trim((string) ($query['typedConfirmation'] ?? '')));
+        $expected = mb_strtolower($action);
+        if ($typed !== $expected) {
+            http_response_code(422);
+            $response = ['ok' => false, 'error' => 'typed_confirmation_required', 'expected' => $action];
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            exit;
+        }
     }
-
-    exit;
 }
 
-if ($path === '/security/governance') {
-    $response = $security->governanceOverview($context);
-} elseif ($path === '/security/capabilities') {
-    $response = $security->capabilityMap($context, ['tenantId' => $context->tenantId, 'workspaceId' => $context->workspaceId, 'environment' => $context->environment]);
-} elseif ($path === '/security/authorize' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->authorize(
-        $context,
-        (string) ($query['permission'] ?? 'jobs.view'),
-        [
-            'tenantId' => (string) ($query['resourceTenantId'] ?? $context->tenantId),
-            'workspaceId' => (string) ($query['resourceWorkspaceId'] ?? $context->workspaceId),
-            'environment' => (string) ($query['resourceEnvironment'] ?? $context->environment),
-        ],
-        (bool) ($query['highRisk'] ?? false),
-    )->toArray();
-} elseif ($path === '/approvals/submit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->submitApprovalRequest(
-        $context,
-        (string) ($query['actionType'] ?? 'job.rollback'),
-        (string) ($query['reason'] ?? 'No reason provided'),
-        (array) ($query['payload'] ?? []),
-        (string) ($query['risk'] ?? 'medium'),
-    );
-} elseif ($path === '/approvals/decide' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->decideApproval(
-        $context,
-        (string) ($query['approvalId'] ?? ''),
-        (string) ($query['decision'] ?? 'reject'),
-        (string) ($query['comment'] ?? ''),
-    );
-} elseif ($path === '/audit/search') {
-    $response = ['items' => $security->searchAudit($query)];
-} elseif ($path === '/break-glass/activate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->requestBreakGlass($context, (string) ($query['reason'] ?? 'incident response'), (int) ($query['ttlMinutes'] ?? 30));
-} elseif ($path === '/locks/acquire' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->acquireLock($context, (string) ($query['resourceType'] ?? 'mapping'), (string) ($query['resourceId'] ?? 'default'));
-} elseif ($path === '/locks/handoff' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = $security->handoffLock(
-        $context,
-        (string) ($query['resourceType'] ?? 'mapping'),
-        (string) ($query['resourceId'] ?? 'default'),
-        (string) ($query['toActorId'] ?? ''),
-    );
-} elseif ($path === '/jobs/action' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $permission = match ((string) ($query['action'] ?? '')) {
-        'rollback' => 'jobs.rollback.execute',
-        'start', 'pause', 'resume', 'cancel', 'retry', 'verify' => 'jobs.operate',
-        default => 'jobs.view',
-    };
-
-    $decision = $security->authorize($context, $permission, ['tenantId' => $context->tenantId, 'workspaceId' => $context->workspaceId, 'environment' => $context->environment], $permission === 'jobs.rollback.execute');
-
-    if (!$decision->allowed) {
-        http_response_code(403);
-        $response = ['ok' => false, 'error' => 'forbidden', 'decision' => $decision->toArray()];
-    } elseif ($decision->approvalRequired) {
-        $validation = $security->validateApprovalToken(
-            (string) ($query['approvalId'] ?? ''),
-            (string) ($query['approvalToken'] ?? ''),
-            'job.' . (string) ($query['action'] ?? 'unknown'),
-            (array) ($query['payload'] ?? []),
-        );
-
-        if (($validation['valid'] ?? false) !== true) {
-            http_response_code(422);
-            $response = ['ok' => false, 'error' => 'approval_invalid', 'validation' => $validation, 'decision' => $decision->toArray()];
-        } else {
-            $response = ['ok' => true, 'jobId' => (string) ($query['jobId'] ?? ''), 'action' => (string) ($query['action'] ?? ''), 'approval' => $validation, 'decision' => $decision->toArray(), 'acceptedAt' => date(DATE_ATOM)];
-        }
-    } else {
-        $response = ['ok' => true, 'jobId' => (string) ($query['jobId'] ?? ''), 'action' => (string) ($query['action'] ?? ''), 'decision' => $decision->toArray(), 'acceptedAt' => date(DATE_ATOM)];
+if ($path === '/meta') {
+    $response = $api->meta();
+    $response['dangerous_actions'] = $dangerousActions;
+} elseif ($path === '/system:check') {
+    $client = null;
+    if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
+        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
-
-    $security->appendAuditEvent([
-        'actorId' => $context->actorId,
-        'actorRoles' => $context->roles,
-        'tenantId' => $context->tenantId,
-        'workspaceId' => $context->workspaceId,
-        'actionType' => 'job.action.' . (string) ($query['action'] ?? 'unknown'),
-        'targetResourceType' => 'migration_job',
-        'targetResourceId' => (string) ($query['jobId'] ?? 'latest'),
-        'requestPayloadSnapshot' => $query,
-        'policyDecision' => $decision->toArray(),
-        'resultStatus' => (($response['ok'] ?? false) === true) ? 'accepted' : 'denied',
-        'correlationId' => (string) ($query['correlationId'] ?? uniqid('corr-', true)),
-        'traceId' => (string) ($query['traceId'] ?? uniqid('tr-', true)),
-        'riskScore' => $decision->riskScore,
-        'securityLabels' => $decision->approvalRequired ? ['approval-required'] : ['standard'],
-    ]);
-} elseif (in_array($path, ['/workers/action', '/mapping/action', '/integrity/action', '/conflicts/action', '/replay/action'], true) && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $response = [
-        'ok' => true,
-        'scope' => trim((string) preg_replace('#^/#', '', str_replace('/action', '', $path))),
-        'jobId' => (string) ($query['jobId'] ?? ''),
-        'action' => (string) ($query['action'] ?? 'noop'),
-        'payload' => $query,
-        'acceptedAt' => date(DATE_ATOM),
-        'message' => 'Action contract accepted. Runtime binding can be enabled behind feature flag.',
-    ];
+    $response = (new SystemCheckService($client))->check($dbPath);
 } else {
     $response = match ($path) {
         '/dashboard' => $api->dashboard($query['jobId'] ?? null),
-        '/meta' => $api->meta(),
         '/jobs' => $api->jobs($query),
         '/jobs/details' => $api->jobDetails((string) ($query['jobId'] ?? 'latest')),
         '/conflicts' => $api->conflicts($query),
