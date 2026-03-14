@@ -143,3 +143,125 @@ CREATE TABLE IF NOT EXISTS migration_state (
     PRIMARY KEY (entity_type),
     KEY idx_migration_state_status (status, last_sync_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_snapshots (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    snapshot_id VARCHAR(64) NOT NULL,
+    snapshot_started_at DATETIME NOT NULL,
+    source_cutoff_time DATETIME NOT NULL,
+    snapshot_status VARCHAR(32) NOT NULL,
+    per_module_cursor_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_snapshot_job (job_id, snapshot_id),
+    CONSTRAINT fk_snapshot_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_snapshot_watermarks (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    snapshot_id VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    last_extracted_source_marker_json JSON NULL,
+    last_reconciled_source_marker_json JSON NULL,
+    last_verified_source_marker_json JSON NULL,
+    last_target_sync_marker_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_snapshot_entity_watermark (snapshot_id, entity_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_delta_runs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    snapshot_id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    started_at DATETIME NOT NULL,
+    finished_at DATETIME NULL,
+    stats_json JSON NULL,
+    PRIMARY KEY (id),
+    KEY idx_delta_runs_job (job_id),
+    CONSTRAINT fk_delta_runs_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_delta_changes (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    delta_run_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    change_type VARCHAR(32) NOT NULL,
+    source_marker VARCHAR(191) NULL,
+    payload_json JSON NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'planned',
+    PRIMARY KEY (id),
+    KEY idx_delta_changes_entity (entity_type, source_id),
+    CONSTRAINT fk_delta_changes_run FOREIGN KEY (delta_run_id) REFERENCES migration_delta_runs(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_entity_states (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    state VARCHAR(64) NOT NULL,
+    reason VARCHAR(255) NULL,
+    dependency_type VARCHAR(64) NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_entity_state (job_id, entity_type, source_id),
+    KEY idx_entity_state_state (state),
+    CONSTRAINT fk_entity_state_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_reconciliation_queue (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    reason VARCHAR(128) NOT NULL,
+    dependency_type VARCHAR(64) NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    last_attempt DATETIME NULL,
+    next_scheduled_attempt DATETIME NULL,
+    escalation_state VARCHAR(64) NOT NULL DEFAULT 'pending',
+    payload_json JSON NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+    PRIMARY KEY (id),
+    KEY idx_reconcile_schedule (job_id, status, next_scheduled_attempt),
+    CONSTRAINT fk_reconcile_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_conflicts (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    conflict_id VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NULL,
+    target_id VARCHAR(128) NULL,
+    conflict_type VARCHAR(128) NOT NULL,
+    severity VARCHAR(32) NOT NULL,
+    payload_json JSON NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_conflict (job_id, conflict_id),
+    KEY idx_conflict_status (job_id, status),
+    CONSTRAINT fk_conflict_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_target_change_markers (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    target_id VARCHAR(128) NOT NULL,
+    marker_source VARCHAR(64) NOT NULL,
+    marker_json JSON NOT NULL,
+    changed_by_migration TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_target_change (job_id, entity_type, target_id),
+    CONSTRAINT fk_target_change_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
