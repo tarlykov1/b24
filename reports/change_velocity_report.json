@@ -1,0 +1,581 @@
+{
+    "generated_at": "2026-03-14T20:51:33+00:00",
+    "entities": {
+        "users": {
+            "total_entities": 2,
+            "changes_last_24h": 0,
+            "changes_last_7d": 2,
+            "changes_last_30d": 2,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 2,
+            "avg_entity_mutations": 1,
+            "new_entities_per_day": 0.03,
+            "updates_per_day": 0.07,
+            "deletions_per_day": 0,
+            "hourly_distribution": {
+                "20": 2
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "crm_leads": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "crm_deals": {
+            "total_entities": 2,
+            "changes_last_24h": 1,
+            "changes_last_7d": 2,
+            "changes_last_30d": 2,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 1,
+            "avg_entity_mutations": 1,
+            "new_entities_per_day": 0.07,
+            "updates_per_day": 0.07,
+            "deletions_per_day": 0,
+            "hourly_distribution": {
+                "16": 1,
+                "20": 1
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "crm_contacts": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "crm_companies": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "crm_activities": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "tasks": {
+            "total_entities": 3,
+            "changes_last_24h": 2,
+            "changes_last_7d": 2,
+            "changes_last_30d": 3,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 1,
+            "avg_entity_mutations": 1,
+            "new_entities_per_day": 0.1,
+            "updates_per_day": 0.1,
+            "deletions_per_day": 0.03,
+            "hourly_distribution": {
+                "18": 1,
+                "19": 1,
+                "20": 1
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "comments": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "files": {
+            "total_entities": 2,
+            "changes_last_24h": 1,
+            "changes_last_7d": 1,
+            "changes_last_30d": 2,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 1,
+            "avg_entity_mutations": 1,
+            "new_entities_per_day": 0.07,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": {
+                "16": 1,
+                "20": 1
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "smart_processes": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "calendar_events": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "groups_projects": {
+            "total_entities": 1,
+            "changes_last_24h": 0,
+            "changes_last_7d": 1,
+            "changes_last_30d": 1,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 1,
+            "avg_entity_mutations": 1,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0.03,
+            "deletions_per_day": 0,
+            "hourly_distribution": {
+                "20": 1
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "disk_files": {
+            "total_entities": 2,
+            "changes_last_24h": 0,
+            "changes_last_7d": 1,
+            "changes_last_30d": 1,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 1,
+            "avg_entity_mutations": 0.5,
+            "new_entities_per_day": 0.03,
+            "updates_per_day": 0.03,
+            "deletions_per_day": 0.03,
+            "hourly_distribution": {
+                "20": 1
+            },
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "workflows": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        },
+        "automation_logs": {
+            "total_entities": 0,
+            "changes_last_24h": 0,
+            "changes_last_7d": 0,
+            "changes_last_30d": 0,
+            "avg_changes_per_hour": 0,
+            "peak_changes_per_hour": 0,
+            "avg_entity_mutations": 0,
+            "new_entities_per_day": 0,
+            "updates_per_day": 0,
+            "deletions_per_day": 0,
+            "hourly_distribution": [],
+            "rest_samples": {
+                "sampled": 0,
+                "changed_recently": 0,
+                "change_ratio": 0
+            },
+            "filesystem_samples": {
+                "sampled_files": 0,
+                "changed_in_window": 0,
+                "change_ratio": 0
+            }
+        }
+    },
+    "velocity_heatmap": {
+        "00:00": 0,
+        "01:00": 0,
+        "02:00": 0,
+        "03:00": 0,
+        "04:00": 0,
+        "05:00": 0,
+        "06:00": 0,
+        "07:00": 0,
+        "08:00": 0,
+        "09:00": 0,
+        "10:00": 0,
+        "11:00": 0,
+        "12:00": 0,
+        "13:00": 0,
+        "14:00": 0,
+        "15:00": 0,
+        "16:00": 2,
+        "17:00": 0,
+        "18:00": 1,
+        "19:00": 1,
+        "20:00": 7,
+        "21:00": 0,
+        "22:00": 0,
+        "23:00": 0
+    },
+    "delta_estimate": {
+        "users": {
+            "changed_during_4h_migration": 0
+        },
+        "crm_leads": {
+            "changed_during_4h_migration": 0
+        },
+        "crm_deals": {
+            "changed_during_4h_migration": 0
+        },
+        "crm_contacts": {
+            "changed_during_4h_migration": 0
+        },
+        "crm_companies": {
+            "changed_during_4h_migration": 0
+        },
+        "crm_activities": {
+            "changed_during_4h_migration": 0
+        },
+        "tasks": {
+            "changed_during_4h_migration": 0
+        },
+        "comments": {
+            "changed_during_4h_migration": 0
+        },
+        "files": {
+            "changed_during_4h_migration": 0
+        },
+        "smart_processes": {
+            "changed_during_4h_migration": 0
+        },
+        "calendar_events": {
+            "changed_during_4h_migration": 0
+        },
+        "groups_projects": {
+            "changed_during_4h_migration": 0
+        },
+        "disk_files": {
+            "changed_during_4h_migration": 0
+        },
+        "workflows": {
+            "changed_during_4h_migration": 0
+        },
+        "automation_logs": {
+            "changed_during_4h_migration": 0
+        }
+    },
+    "conflict_probability": {
+        "users": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "crm_leads": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "crm_deals": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "crm_contacts": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "crm_companies": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "crm_activities": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "tasks": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "comments": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "files": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "smart_processes": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "calendar_events": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "groups_projects": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "disk_files": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "workflows": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        },
+        "automation_logs": {
+            "rate_per_hour": 0,
+            "migration_duration_hours": 4,
+            "conflict_risk": 0,
+            "probability": 0,
+            "risk_level": "low"
+        }
+    },
+    "migration_strategy": {
+        "recommended_strategy": "background_initial_plus_delta",
+        "initial_migration": "background",
+        "delta_sync_interval_minutes": 10,
+        "final_cutover_window_minutes": 15,
+        "recommended_workers": 4,
+        "recommended_rate_limit_rps": 12,
+        "real_time_migration_feasible": true
+    },
+    "mutation_prediction": {
+        "users": 0,
+        "crm_leads": 0,
+        "crm_deals": 0,
+        "crm_contacts": 0,
+        "crm_companies": 0,
+        "crm_activities": 0,
+        "tasks": 0,
+        "comments": 0,
+        "files": 0,
+        "smart_processes": 0,
+        "calendar_events": 0,
+        "groups_projects": 0,
+        "disk_files": 0,
+        "workflows": 0,
+        "automation_logs": 0
+    },
+    "safety_score": 70,
+    "safety_level": "MEDIUM",
+    "static_data_percentage": 0,
+    "dynamic_data_percentage": 100,
+    "sources": {
+        "db": true,
+        "rest": false,
+        "filesystem": true
+    }
+}

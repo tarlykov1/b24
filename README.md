@@ -291,11 +291,13 @@ Read docs as a mix of:
 php bin/migration-module audit:run
 php bin/migration-module audit:summary
 php bin/migration-module audit:report
+php bin/migration-module audit:velocity --days=30 --sample-size=1000 --output=json
 ```
 
 Артефакты:
 
 - `.audit/migration_profile.json` (policy/planning input)
 - `.audit/report.html` (human-readable report with risk flags/strategy hints)
+- `reports/change_velocity_report.json` and `reports/velocity_heatmap.json` (change velocity audit artifacts)
 
 Подробности: `docs/audit-discovery.md`.

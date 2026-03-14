@@ -32,6 +32,7 @@ final class ControlCenterApi
             '/migration/conflicts/resolve' => $this->conflictController->resolve((string) ($payload['job_id'] ?? ''), (array) ($payload['conflict'] ?? []), (string) ($payload['action'] ?? 'manual_edit')),
             '/migration/integrity' => $this->integrityController->list((string) ($payload['job_id'] ?? ''), (int) ($payload['limit'] ?? 100), (int) ($payload['offset'] ?? 0)),
             '/migration/integrity/repair' => $this->integrityController->repair((string) ($payload['job_id'] ?? ''), (array) ($payload['issue'] ?? []), (bool) ($payload['confirmed'] ?? false)),
+            '/migration/velocity-audit' => $this->dashboardController->velocityAudit(),
             default => ['error' => 'unknown_endpoint', 'path' => $path],
         };
     }

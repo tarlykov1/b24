@@ -51,6 +51,31 @@ final class MigrationMonitor
         ];
     }
 
+
+    /** @return array<string,mixed> */
+    public function velocityAudit(): array
+    {
+        $path = 'reports/change_velocity_report.json';
+        if (!is_file($path)) {
+            return ['available' => false, 'message' => 'Velocity report not found. Run audit:velocity first.'];
+        }
+
+        $decoded = json_decode((string) file_get_contents($path), true);
+        if (!is_array($decoded)) {
+            return ['available' => false, 'message' => 'Velocity report is invalid JSON.'];
+        }
+
+        return [
+            'available' => true,
+            'safety_score' => (int) ($decoded['safety_score'] ?? 0),
+            'safety_level' => (string) ($decoded['safety_level'] ?? 'UNKNOWN'),
+            'migration_strategy' => (array) ($decoded['migration_strategy'] ?? []),
+            'velocity_heatmap' => (array) ($decoded['velocity_heatmap'] ?? []),
+            'mutation_prediction' => (array) ($decoded['mutation_prediction'] ?? []),
+            'conflict_probability' => (array) ($decoded['conflict_probability'] ?? []),
+        ];
+    }
+
     private function scalar(string $sql, string $jobId): int|string|null
     {
         $stmt = $this->pdo->prepare($sql);
