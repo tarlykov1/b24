@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MigrationModule\Application\AuditDiscovery;
 
 use DateTimeImmutable;
+use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Application\AuditDiscovery\Inspection\DatabaseInspector;
 use MigrationModule\Application\AuditDiscovery\Inspection\FilesystemInspector;
 use MigrationModule\Application\AuditDiscovery\Inspection\RestInspector;
@@ -22,6 +23,7 @@ final class AuditDiscoveryService
         private readonly RiskEngine $riskEngine = new RiskEngine(),
         private readonly StrategyHintEngine $strategyHintEngine = new StrategyHintEngine(),
         private readonly HtmlReportRenderer $htmlReportRenderer = new HtmlReportRenderer(),
+        private readonly ChangeVelocityAnalyzer $changeVelocityAnalyzer = new ChangeVelocityAnalyzer(),
     ) {
     }
 
@@ -81,7 +83,7 @@ final class AuditDiscoveryService
             'strategy_hints' => $strategyHints,
             'readiness_score' => $this->readinessScore($summary),
             'sources' => ['db' => $db['available'] ?? false, 'fs' => $fs['available'] ?? false, 'rest' => $rest['available'] ?? false],
-            'deep_mode' => $deep,
+            'change_velocity' => $this->changeVelocityAnalyzer->analyze($pdo, $client, $uploadPath),
         ];
 
         if (in_array($section, ['run', 'report'], true)) {
@@ -98,6 +100,7 @@ final class AuditDiscoveryService
             'linkage' => $linkage,
             'summary' => $summary,
             'report' => ['report' => '.audit/report.html', 'profile' => '.audit/migration_profile.json'],
+            'velocity' => $this->changeVelocityAnalyzer->analyze($pdo, $client, $uploadPath),
             default => $result,
         };
     }

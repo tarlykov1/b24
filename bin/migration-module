@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
+use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
@@ -60,6 +61,48 @@ if (isset($audits[$command])) {
     out((new AuditDiscoveryService())->run($audits[$command], $deep));
 }
 
+if ($command === 'audit:velocity') {
+    $opts = ['days' => 30, 'sample-size' => 1000, 'entity' => null, 'output' => 'json'];
+    foreach (array_slice($argv, 2) as $arg) {
+        if (!str_starts_with($arg, '--')) {
+            continue;
+        }
+
+        [$key, $value] = array_pad(explode('=', substr($arg, 2), 2), 2, '');
+        if ($key === 'days') {
+            $opts['days'] = max(1, (int) $value);
+        }
+        if ($key === 'sample-size') {
+            $opts['sample-size'] = max(50, (int) $value);
+        }
+        if ($key === 'entity' && $value !== '') {
+            $opts['entity'] = $value;
+        }
+        if ($key === 'output' && $value !== '') {
+            $opts['output'] = $value;
+        }
+    }
+
+    $dsn = (string) ($_ENV['BITRIX_DB_DSN'] ?? getenv('BITRIX_DB_DSN') ?: '');
+    $pdo = null;
+    if ($dsn !== '') {
+        $pdo = new PDO($dsn, (string) ($_ENV['BITRIX_DB_USER'] ?? getenv('BITRIX_DB_USER') ?: ''), (string) ($_ENV['BITRIX_DB_PASSWORD'] ?? getenv('BITRIX_DB_PASSWORD') ?: ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if (str_starts_with($dsn, 'mysql:')) {
+            $pdo->exec('SET SESSION TRANSACTION READ ONLY');
+        }
+    }
+
+    $rest = null;
+    if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN') ?: '') !== '')) {
+        $rest = new BitrixRestClient((string) ($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL')), (string) ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN')));
+    }
+
+    $upload = (string) ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload');
+    $report = (new ChangeVelocityAnalyzer())->analyze($pdo, $rest, $upload, (int) $opts['days'], (int) $opts['sample-size'], is_string($opts['entity']) ? $opts['entity'] : null);
+
+    out($opts['output'] === 'json' ? $report : ['status' => 'ok', 'report' => 'reports/change_velocity_report.json']);
+}
+
 try {
     $config = (new ConfigLoader())->load($configPath);
     $storagePath = (string) (($config['storage']['path'] ?? '.prototype/migration.sqlite'));
@@ -84,7 +127,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:linkage', 'audit:summary', 'audit:report', 'audit:run', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
