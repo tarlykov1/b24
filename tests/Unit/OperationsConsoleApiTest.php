@@ -16,6 +16,8 @@ final class OperationsConsoleApiTest extends TestCase
         self::assertArrayHasKey('latestEvents', $dashboard);
         self::assertArrayHasKey('totalJobs', $dashboard['stats']);
         self::assertArrayHasKey('queueDepth', $dashboard['stats']);
+        self::assertArrayHasKey('sourceTargetLagSec', $dashboard['stats']);
+        self::assertArrayHasKey('featureFlags', $dashboard);
     }
 
     public function testJobsEndpointSupportsPagingContract(): void
@@ -35,5 +37,26 @@ final class OperationsConsoleApiTest extends TestCase
 
         self::assertNotEmpty($heatmap['cells']);
         self::assertArrayHasKey('count', $heatmap['cells'][0]);
+    }
+
+    public function testMetaContainsFeatureFlagsAndRoles(): void
+    {
+        $api = new OperationsConsoleApi(null);
+        $meta = $api->meta();
+
+        self::assertArrayHasKey('featureFlags', $meta);
+        self::assertArrayHasKey('roles', $meta);
+        self::assertContains('operator', $meta['roles']);
+    }
+
+    public function testJobDetailsContainTabbedDataContract(): void
+    {
+        $api = new OperationsConsoleApi(null);
+        $details = $api->jobDetails('job-42');
+
+        self::assertSame('job-42', $details['jobId']);
+        self::assertArrayHasKey('overview', $details);
+        self::assertArrayHasKey('timeline', $details);
+        self::assertArrayHasKey('syncStatus', $details);
     }
 }
