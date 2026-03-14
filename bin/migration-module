@@ -3,20 +3,13 @@
 
 declare(strict_types=1);
 
-use MigrationModule\Application\Checkpoint\CheckpointService;
-use MigrationModule\Application\Config\ProductionConfigService;
-use MigrationModule\Application\Cutover\CutoverService;
-use MigrationModule\Application\Freeze\FreezeModeService;
-use MigrationModule\Application\Monitoring\MonitoringDashboardService;
-use MigrationModule\Application\Plan\DryRunService;
-use MigrationModule\Application\Plan\MigrationPlanningService;
-use MigrationModule\Application\Readiness\ProductionReadinessChecklistService;
-use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
-use MigrationModule\Application\Report\FinalReportService;
-use MigrationModule\Application\Rollback\RollbackService;
-use MigrationModule\Application\Sync\DeltaSyncService;
-use MigrationModule\Cli\MigrationCommands;
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
+use MigrationModule\Prototype\Adapter\StubSourceAdapter;
+use MigrationModule\Prototype\Adapter\StubTargetAdapter;
+use MigrationModule\Prototype\ConfigLoader;
+use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
+use MigrationModule\Prototype\Policy\UserHandlingPolicy;
+use MigrationModule\Prototype\PrototypeRuntime;
+use MigrationModule\Prototype\Storage\SqliteStorage;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -36,65 +29,59 @@ if (is_file($autoload)) {
     });
 }
 
-$repo = new MigrationRepository();
-$commands = new MigrationCommands(
-    $repo,
-    new DryRunService(new MigrationPlanningService($repo)),
-    new MigrationPlanningService($repo),
-    new PostMigrationReconciliationService($repo),
-    new DeltaSyncService($repo),
-    new FinalReportService(),
-    new CutoverService($repo, new DeltaSyncService($repo), new FreezeModeService()),
-    new RollbackService($repo),
-    new CheckpointService(),
-    new ProductionConfigService(),
-    new MonitoringDashboardService(),
-    new ProductionReadinessChecklistService(),
-);
+function out(array $payload, int $code = 0): never {
+    echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+    exit($code);
+}
 
-$command = $argv[1] ?? '';
+$command = $argv[1] ?? 'help';
+$configPath = $argv[2] ?? 'migration.config.yml';
 
-switch ($command) {
-    case 'migration':
-        $action = $argv[2] ?? 'status';
-        $jobId = $argv[3] ?? $commands->createJob('cli_default');
+try {
+    $config = (new ConfigLoader())->load($configPath);
+    $storagePath = (string) (($config['storage']['path'] ?? '.prototype/migration.sqlite'));
+    $storage = new SqliteStorage($storagePath);
+    $runtime = new PrototypeRuntime(
+        $storage,
+        new StubSourceAdapter(),
+        new StubTargetAdapter(),
+        new IdConflictResolutionPolicy(),
+        new UserHandlingPolicy(),
+        $config,
+    );
 
-        switch ($action) {
-            case 'start':
-            case 'pause':
-            case 'resume':
-                echo json_encode(['action' => $action, 'status' => 'accepted', 'job_id' => $jobId], JSON_PRETTY_PRINT) . PHP_EOL;
-                break;
-            case 'status':
-                echo json_encode($commands->status($jobId), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                break;
-            case 'verify':
-                echo json_encode(['stage' => 'verification', 'status' => 'ready', 'job_id' => $jobId], JSON_PRETTY_PRINT) . PHP_EOL;
-                break;
-            case 'dry-run':
-                echo json_encode($commands->dryRun($jobId, ['users' => [['id' => '1']]], ['users' => []]), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                break;
-            case 'delta-sync':
-                echo json_encode($commands->deltaSyncPreview($jobId, 'users', [['id' => '1', 'updated_at' => date(DATE_ATOM)]], []), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                break;
-            case 'cutover':
-                echo json_encode(
-                    $commands->cutover($jobId, 'users', ['main_transfer_done' => true, 'critical_errors' => 0], [['id' => '1', 'updated_at' => date(DATE_ATOM)]], [], true, true),
-                    JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE,
-                ) . PHP_EOL;
-                break;
-            case 'rollback':
-                echo json_encode($commands->rollback($jobId, 'operator_cancelled', 'cutover', $argv[4] ?? 'safe'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                break;
-            case 'report':
-                echo json_encode(['written' => $commands->exportReports([])], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                break;
-            default:
-                echo "Unknown migration action\n";
-                exit(1);
-        }
-        break;
-    default:
-        echo "Usage: migration-module migration [start|pause|resume|status|verify|dry-run|delta-sync|cutover|rollback|report] [jobId]\n";
-        exit(1);
+    if ($command === 'help') {
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status']]);
+    }
+
+    if ($command === 'validate') {
+        out($runtime->validate());
+    }
+
+    $storage->initSchema();
+    $jobId = $argv[3] ?? $storage->createJob($command);
+
+    switch ($command) {
+        case 'plan':
+            out($runtime->plan($jobId));
+        case 'dry-run':
+            out($runtime->dryRun($jobId));
+        case 'execute':
+            out($runtime->execute($jobId, false));
+        case 'pause':
+            $storage->setJobStatus($jobId, 'paused');
+            out(['job_id' => $jobId, 'status' => 'paused']);
+        case 'resume':
+            out($runtime->execute($jobId, true));
+        case 'verify':
+        case 'verify-only':
+            out($runtime->verify($jobId));
+        case 'report':
+        case 'status':
+            out(['job_id' => $jobId, 'summary' => $storage->summary($jobId)]);
+        default:
+            out(['error' => 'Unknown command', 'command' => $command], 1);
+    }
+} catch (Throwable $e) {
+    out(['error' => $e->getMessage(), 'hint' => 'Prototype mode: run "php bin/migration-module validate" first.'], 1);
 }
