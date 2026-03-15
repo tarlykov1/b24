@@ -415,6 +415,31 @@ final class OperationsConsoleApi
         return ['items' => $items, 'updatedAt' => (new DateTimeImmutable())->format(DATE_ATOM)];
     }
 
+
+    /** @param array{jobId?:string|null,limit?:int,offset?:int,status?:string|null} $query
+     * @return array{items:array<int,array<string,mixed>>,total:int,limit:int,offset:int}
+     */
+    public function repairs(array $query): array
+    {
+        $limit = max(1, (int) ($query['limit'] ?? 50));
+        $offset = max(0, (int) ($query['offset'] ?? 0));
+        $items = [];
+
+        for ($i = 0; $i < $limit; ++$i) {
+            $idx = $offset + $i + 1;
+            $items[] = [
+                'repairId' => 'r-' . $idx,
+                'jobId' => (string) ($query['jobId'] ?? 'latest'),
+                'status' => ['queued', 'in_progress', 'applied', 'failed'][$idx % 4],
+                'entityType' => ['deal', 'contact', 'task', 'file'][$idx % 4],
+                'plan' => ['relink', 'replay', 'manual_patch'][$idx % 3],
+                'createdAt' => (new DateTimeImmutable('-' . random_int(1, 240) . ' minutes'))->format(DATE_ATOM),
+            ];
+        }
+
+        return ['items' => $items, 'total' => 180, 'limit' => $limit, 'offset' => $offset];
+    }
+
     /** @param array{jobId?:string|null,limit?:int,offset?:int,severity?:string|null,stream?:string|null,q?:string|null} $query
      * @return array{items:array<int,array<string,mixed>>,total:int,limit:int,offset:int}
      */

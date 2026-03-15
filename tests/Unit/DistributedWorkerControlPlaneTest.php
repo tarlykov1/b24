@@ -32,6 +32,36 @@ final class DistributedWorkerControlPlaneTest extends TestCase
         self::assertSame(1, $retried['control_plane']['queue_retries']['stage_2_tasks']);
     }
 
+
+    public function testLeaseLifecycleRecoveryAndDeadLetterQueue(): void
+    {
+        $storagePath = sys_get_temp_dir() . '/migration-control-plane-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $storage = new SqliteStorage($storagePath);
+        $storage->initSchema();
+        $control = new DistributedWorkerControlPlane($storage, new AdaptiveRateLimiter('balanced'));
+        $jobId = 'job-control-3';
+
+        $control->bootstrap($jobId, ['stage_1_contacts'], ['worker-z']);
+        $control->enqueueEntity($jobId, 'contact', 'c-10', ['name' => 'A']);
+        $control->pauseWorker($jobId, 'worker-z');
+
+        $leaseWhilePaused = $control->leaseNextEntity($jobId, 'worker-z');
+        self::assertNull($leaseWhilePaused['leased']);
+
+        $control->resumeWorker($jobId, 'worker-z');
+        $lease = $control->leaseNextEntity($jobId, 'worker-z', 1);
+        self::assertNotNull($lease['leased']);
+        $leaseId = (string) $lease['leased']['lease_id'];
+
+        $control->completeLease($jobId, $leaseId, false, 'transient');
+        $lease2 = $control->leaseNextEntity($jobId, 'worker-z', 1);
+        $control->completeLease($jobId, (string) $lease2['leased']['lease_id'], false, 'transient');
+        $lease3 = $control->leaseNextEntity($jobId, 'worker-z', 1);
+        $status = $control->completeLease($jobId, (string) $lease3['leased']['lease_id'], false, 'fatal');
+
+        self::assertSame(1, $status['queue_metrics']['dead_letter_depth']);
+    }
+
     public function testHeartbeatAdjustsAdaptiveThrottlingOnErrors(): void
     {
         $storagePath = sys_get_temp_dir() . '/migration-control-plane-' . bin2hex(random_bytes(4)) . '.sqlite';
