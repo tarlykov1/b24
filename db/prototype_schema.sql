@@ -158,3 +158,35 @@ CREATE TABLE IF NOT EXISTS delta_changes (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(job_id, scan_id, entity_type, entity_id, action)
 );
+
+CREATE TABLE IF NOT EXISTS migration_conflicts (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  conflict_type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  resolution_status TEXT NOT NULL DEFAULT 'open',
+  resolution_policy TEXT,
+  resolution_payload TEXT,
+  resolved_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS migration_operator_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  decision_key TEXT NOT NULL,
+  policy TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS migration_repair_plans (
+  plan_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  applied_at TEXT
+);
