@@ -23,6 +23,7 @@ import {
   SessionSecurityPage,
   PolicySimulatorPage,
   IncidentReviewPage,
+  CutoverCommandCenterPage,
 } from './pages/pages';
 import './styles/app.css';
 
@@ -46,6 +47,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="diff" element={<DiffPage />} />
             <Route path="replay" element={<ReplayPage />} />
             <Route path="health" element={<HealthPage />} />
+            <Route path="cutover" element={<CutoverCommandCenterPage />} />
             <Route path="security" element={<SecurityHubPage />} />
             <Route path="security/roles" element={<RoleMatrixPage />} />
             <Route path="security/approvals" element={<ApprovalQueuePage />} />

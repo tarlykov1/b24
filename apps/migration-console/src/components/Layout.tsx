@@ -18,6 +18,7 @@ const nav = [
   ['/diff', 'Diff Explorer'],
   ['/replay', 'Replay / Sync'],
   ['/health', 'System Health'],
+  ['/cutover', 'Cutover Command Center'],
   ['/security', 'Security Hub'],
   ['/security/roles', 'Role Matrix'],
   ['/security/approvals', 'Approval Queue'],

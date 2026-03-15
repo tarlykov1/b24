@@ -7,6 +7,10 @@ namespace MigrationModule\Infrastructure\Http;
 use DateInterval;
 use DateTimeImmutable;
 use PDO;
+use MigrationModule\Application\GoLive\CommunicationTemplateEngine;
+use MigrationModule\Application\GoLive\CutoverRehearsalEngine;
+use MigrationModule\Application\GoLive\GoLiveReadinessEngine;
+use MigrationModule\Application\GoLive\WindowRecommendationService;
 use MigrationModule\Application\Security\SecurityGovernanceService;
 
 final class OperationsConsoleApi
@@ -109,6 +113,68 @@ final class OperationsConsoleApi
             'timeRange' => '1h',
             'featureFlags' => $this->meta()['featureFlags'],
             'roles' => $this->meta()['roles'],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function cutoverCommandCenter(string $jobId): array
+    {
+        $readiness = (new GoLiveReadinessEngine())->assess([
+            'completedMigrationWaves' => 3,
+            'requiredMigrationWaves' => 3,
+            'remainingQueueSize' => 64,
+            'unresolvedIntegrityIssues' => 1,
+            'unresolvedMappingConflicts' => 0,
+            'workerHealth' => 0.9,
+            'lastDryRunOk' => true,
+            'lastVerificationOk' => true,
+            'deltaSyncDurationEstimateMin' => 28,
+            'maxAllowedDowntimeMin' => 45,
+            'sourceLoadEstimate' => 0.62,
+            'sourceLoadThreshold' => 0.75,
+            'knownIssues' => [['id' => 'ki-1', 'severity' => 'minor', 'text' => 'files tail sync']],
+        ]);
+
+        $rehearsal = (new CutoverRehearsalEngine())->simulate(['entityVolume' => 52000, 'avgWorkerThroughput' => 160, 'workers' => 12, 'errorRate' => 0.02, 'windowHours' => 6]);
+        $windows = (new WindowRecommendationService())->recommend($this->sampleActivity(), 28, 45);
+        $comm = new CommunicationTemplateEngine();
+
+        return [
+            'jobId' => $jobId,
+            'phase' => 'freeze-pending',
+            'stateMachineState' => 'freeze-pending',
+            'etaMin' => 79,
+            'readiness' => $readiness,
+            'approvals' => [
+                ['role' => 'approver', 'status' => 'approved'],
+                ['role' => 'business_owner', 'status' => 'approved'],
+                ['role' => 'rollback_approver', 'status' => 'pending'],
+            ],
+            'freeze' => ['status' => 'scheduled', 'mode' => 'operational_freeze', 'exceptions' => 0],
+            'deltaSync' => ['status' => 'planned', 'progress' => 0, 'etaMin' => 28],
+            'smoke' => ['status' => 'pending', 'criticalPassRate' => 1.0],
+            'rollbackPanel' => ['possible' => true, 'risk' => 'medium', 'strategy' => 'partial_rollback_selected_domains'],
+            'runbookTracker' => [
+                ['minute' => 'T-30', 'step' => 'freeze notification', 'status' => 'done'],
+                ['minute' => 'T-20', 'step' => 'freeze activation', 'status' => 'pending'],
+                ['minute' => 'T-10', 'step' => 'final delta', 'status' => 'pending'],
+            ],
+            'criticalPath' => ['freeze', 'delta', 'switch', 'smoke'],
+            'blockerHeatmap' => [['domain' => 'crm', 'severity' => 'yellow', 'count' => 1], ['domain' => 'files', 'severity' => 'green', 'count' => 0]],
+            'manualOverrideAudit' => [],
+            'rehearsal' => $rehearsal,
+            'windowAdvice' => $windows,
+            'communication' => [
+                'nextMessage' => $comm->render('t_minus_1_day', [
+                    'window' => '2026-04-19 22:00-02:00',
+                    'expected_downtime' => '45m',
+                    'affected_modules' => 'CRM, Tasks, Files',
+                    'support_contact' => 'ops@example.com',
+                    'business_owner' => 'Head of Sales Ops',
+                    'next_update_time' => '21:30',
+                ]),
+            ],
+            'eventLog' => $this->recentEvents($jobId),
         ];
     }
 
@@ -431,6 +497,22 @@ final class OperationsConsoleApi
     }
 
     /** @return array<int,array<string,mixed>> */
+
+
+    /** @return array<int,array{day:string,hour:int,activity:int}> */
+    private function sampleActivity(): array
+    {
+        $points = [];
+        foreach (['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as $day) {
+            foreach ([0, 3, 6, 9, 12, 15, 18, 21] as $hour) {
+                $base = in_array($day, ['Sat', 'Sun'], true) ? 10 : 35;
+                $modifier = ($hour >= 9 && $hour <= 18) ? 35 : 8;
+                $points[] = ['day' => $day, 'hour' => $hour, 'activity' => $base + $modifier + random_int(0, 15)];
+            }
+        }
+
+        return $points;
+    }
     private function recentEvents(?string $jobId): array
     {
         $events = [];
