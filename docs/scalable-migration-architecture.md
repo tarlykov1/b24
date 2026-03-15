@@ -30,3 +30,19 @@
 - подключить реальные адаптеры Bitrix API;
 - вынести queue/state в надёжный внешний storage;
 - добавить нагрузочные integration-тесты и SLO/SLA контуры.
+
+
+## Distributed Worker Control Plane (incremental extension)
+- Добавлен `DistributedWorkerControlPlane` как совместимое расширение для управления распределёнными воркерами без переписывания прототипа.
+- Control plane хранит состояние `status`, `assignments`, `queue_retries`, `paused_reason` в репозитории и поддерживает идемпотентные команды pause/resume/retry.
+- Heartbeat воркеров обновляет lease/last_heartbeat и интегрируется с `AdaptiveRateLimiter` (успех → плавное восстановление, ошибки 429/5xx → backoff).
+
+### CLI команды control plane
+- `migration:workers:init <job_id> <queue_csv> <workers_csv>`
+- `migration:workers:status <job_id>`
+- `migration:workers:pause <job_id> [reason]`
+- `migration:workers:resume <job_id>`
+- `migration:workers:retry <job_id> <queue_name>`
+- `migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]`
+
+Эти команды не затрагивают существующие `validate|dry-run|execute|resume|verify` и добавлены как backward-compatible слой для постепенного перехода к production distributed runtime.
