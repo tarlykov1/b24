@@ -17,6 +17,16 @@ use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
 use MigrationModule\Prototype\Policy\UserHandlingPolicy;
 use MigrationModule\Prototype\PrototypeRuntime;
 use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Simulation\Application\FailureSimulationService;
+use MigrationModule\Simulation\Application\SimulationEngine;
+use MigrationModule\Simulation\Domain\SimulationInput;
+use MigrationModule\Simulation\Estimator\CRMEstimator;
+use MigrationModule\Simulation\Estimator\FilesEstimator;
+use MigrationModule\Simulation\Estimator\TasksEstimator;
+use MigrationModule\Simulation\Estimator\UsersEstimator;
+use MigrationModule\Simulation\Infrastructure\SimulationRepository;
+use MigrationModule\Simulation\Report\SimulationReportBuilder;
+use MigrationModule\Simulation\Scenario\ScenarioBuilder;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -127,7 +137,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
@@ -135,6 +145,75 @@ try {
     }
 
     $storage->initSchema();
+
+    if (str_starts_with($command, 'simulate')) {
+        $input = new SimulationInput(
+            entityVolumes: [
+                'users' => (int) ($config['entities']['users'] ?? 1000),
+                'deals' => (int) ($config['entities']['deals'] ?? 5000),
+                'tasks' => (int) ($config['entities']['tasks'] ?? 12000),
+                'files' => (int) ($config['entities']['files'] ?? 24000),
+            ],
+            audit: [
+                'custom_fields' => (int) ($config['audit']['custom_fields'] ?? 140),
+                'large_file_ratio' => (float) ($config['audit']['large_file_ratio'] ?? 0.2),
+            ],
+            dependencyGraph: [
+                'deals' => ['users', 'companies'],
+                'tasks' => ['users', 'groups'],
+                'files' => ['tasks'],
+            ],
+            capabilities: [
+                'source_safe_read_qps' => (int) ($config['safety']['source_read_qps'] ?? 90),
+            ],
+            policies: $config['policy'] ?? [],
+        );
+
+        $builder = new ScenarioBuilder();
+        $engine = new SimulationEngine([new UsersEstimator(), new CRMEstimator(), new TasksEstimator(), new FilesEstimator()]);
+        $reportBuilder = new SimulationReportBuilder();
+        $simulationRepo = new SimulationRepository($storage->pdo());
+
+        if ($command === 'simulate') {
+            $scenario = $builder->buildCandidates($input)[1];
+            $run = $engine->run($input, $scenario);
+            $simulationRepo->saveScenario('audit_current', 'v1', $scenario, ['entity_volumes' => $input->entityVolumes, 'audit' => $input->audit]);
+            $simulationRepo->saveRun($run);
+            out(['summary' => $reportBuilder->toJson($run), 'text' => $reportBuilder->toMarkdown($run)]);
+        }
+
+        if ($command === 'simulate:compare') {
+            $comparison = $engine->compare($input, array_slice($builder->buildCandidates($input), 0, 3));
+            $simulationRepo->saveComparison('default_compare', $comparison->toArray());
+            out($comparison->toArray());
+        }
+
+        if ($command === 'simulate:scenario') {
+            $scenario = $builder->custom('Custom', 'full initial migration', ['worker_count' => (int) ($argv[3] ?? 8), 'window_hours' => (float) ($argv[4] ?? 8.0)]);
+            $run = $engine->run($input, $scenario);
+            out($reportBuilder->toJson($run));
+        }
+
+        if ($command === 'simulate:capacity') {
+            $scenario = $builder->buildCandidates($input)[0];
+            $run = $engine->run($input, $scenario);
+            out(['source' => $run->sourceLoadProfile, 'target' => $run->targetLoadProfile, 'window_hours' => $scenario->parameters['window_hours']]);
+        }
+
+        if ($command === 'simulate:failures') {
+            $scenario = $builder->buildCandidates($input)[1];
+            $run = $engine->run($input, $scenario);
+            $withFailures = (new FailureSimulationService())->apply($run->toArray(), ['network_instability', 'worker_crash']);
+            out($withFailures);
+        }
+
+        if ($command === 'simulate:report') {
+            $scenario = $builder->buildCandidates($input)[0];
+            $run = $engine->run($input, $scenario);
+            out(['json' => $reportBuilder->toJson($run), 'markdown' => $reportBuilder->toMarkdown($run)]);
+        }
+    }
+
     $jobId = $argv[3] ?? $storage->createJob($command);
 
     if ($command === 'migration') {

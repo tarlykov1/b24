@@ -80,3 +80,35 @@ CREATE TABLE IF NOT EXISTS state (
   status TEXT,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS simulation_scenarios (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  migration_mode TEXT NOT NULL,
+  parameters_json TEXT NOT NULL,
+  based_on_audit_id TEXT NOT NULL,
+  policy_version TEXT NOT NULL,
+  input_snapshot_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS simulation_runs (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS simulation_comparisons (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS estimator_calibration_profiles (
+  id TEXT PRIMARY KEY,
+  profile_name TEXT NOT NULL,
+  coefficients_json TEXT NOT NULL,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
