@@ -258,7 +258,7 @@ final class MigrationCommands
     {
         return [
             'job_id' => $jobId,
-            'stage' => $this->repository->jobStatus($jobId) ?? 'unknown',
+            'stage' => $this->repository->jobStatus($jobId),
             'progress' => count($this->repository->mappings($jobId)),
             'stats' => [
                 'reports' => count($this->repository->reports($jobId)),

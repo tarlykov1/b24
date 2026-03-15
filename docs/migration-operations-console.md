@@ -71,3 +71,9 @@ VITE_MIGRATION_API_BASE=http://localhost:8080/api.php
 - Bind action contracts to runtime orchestrator controls (worker restart, queue quarantine, repair batch execution).
 - Replace synthetic graph/heatmap generators with storage-backed analytics projections.
 - Add RBAC enforcement on API side using existing platform auth/session.
+
+## Real vs Demo Mode (stabilization)
+
+- `demo_mode=false` (default): synthetic/operator demo telemetry is disabled; unsupported panels return `status=not_available` and `demo_only=true`.
+- `demo_mode=true`: synthetic panels are explicitly enabled for demonstrations only.
+- Do not use demo telemetry as production evidence.

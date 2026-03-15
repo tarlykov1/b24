@@ -18,6 +18,7 @@ final class OperationsConsoleApi
     public function __construct(
         private readonly ?PDO $pdo,
         private readonly ?SecurityGovernanceService $security = null,
+        private readonly bool $demoMode = false,
     ) {
     }
 
@@ -25,6 +26,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function snapshotPanel(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('snapshot_panel', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId,
             'currentSnapshotId' => 'snap-' . substr(hash('sha1', $jobId), 0, 8),
@@ -42,6 +46,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function reconciliationCenter(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('reconciliation_center', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId,
             'blockedEntities' => 12,
@@ -56,6 +63,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function hypercareStatus(?string $jobId = null): array
     {
+        if (($g = $this->ensureDemoMode('hypercare_status', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId ?? 'latest',
             'system_health' => ['score' => 0.93, 'error_rate' => 0.012, 'api_latency_ms' => 240],
@@ -68,6 +78,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function hypercareIntegrityReport(?string $jobId = null): array
     {
+        if (($g = $this->ensureDemoMode('hypercare_integrity_report', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId ?? 'latest',
             'broken_relations' => 8,
@@ -80,6 +93,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function hypercareAdoption(?string $jobId = null): array
     {
+        if (($g = $this->ensureDemoMode('hypercare_adoption', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId ?? 'latest',
             'active_users' => 412,
@@ -93,6 +109,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function hypercarePerformance(?string $jobId = null): array
     {
+        if (($g = $this->ensureDemoMode('hypercare_performance', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId ?? 'latest',
             'slow_queries' => 5,
@@ -105,6 +124,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function hypercareFinalReport(?string $jobId = null): array
     {
+        if (($g = $this->ensureDemoMode('hypercare_final_report', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId ?? 'latest',
             'status' => 'generated',
@@ -116,6 +138,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function conflictCenter(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('conflict_center', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId,
             'types' => [
@@ -130,6 +155,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function dataConsistencyDashboard(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('data_consistency_dashboard', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId,
             'migratedEntities' => 10024,
@@ -159,11 +187,11 @@ final class OperationsConsoleApi
             'retryRate' => array_sum(array_map(static fn (array $w): float => (float) $w['retryRate'], $activeWorkers['items'])) / max(1, count($activeWorkers['items'])),
             'errorRate' => min(1, (count($conflicts['items']) + count($integrity['items'])) / max(1, $jobs['total'] * 15)),
             'queueDepth' => array_sum(array_map(static fn (array $w): int => (int) $w['queueDepth'], $activeWorkers['items'])),
-            'sourceTargetLagSec' => random_int(5, 240),
+            'sourceTargetLagSec' => null,
             'workerHealth' => count(array_filter($activeWorkers['items'], static fn (array $w): bool => $w['status'] !== 'blocked')) / max(1, count($activeWorkers['items'])),
             'integrityIssues' => $integrity['total'],
             'unresolvedConflicts' => $conflicts['total'],
-            'incrementalSyncState' => random_int(0, 1) ? 1 : 0,
+            'incrementalSyncState' => null,
         ];
 
         return [
@@ -179,6 +207,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function cutoverCommandCenter(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('cutover_command_center', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $readiness = (new GoLiveReadinessEngine())->assess([
             'completedMigrationWaves' => 3,
             'requiredMigrationWaves' => 3,
@@ -260,7 +291,7 @@ final class OperationsConsoleApi
     public function jobs(array $query): array
     {
         if ($this->pdo === null) {
-            return $this->mockJobs($query);
+            return $this->demoMode ? $this->mockJobs($query) : ['items' => [], 'total' => 0, 'limit' => max(1, (int) ($query['limit'] ?? 25)), 'offset' => max(0, (int) ($query['offset'] ?? 0)), 'status' => 'not_available', 'demo_only' => true];
         }
 
         $limit = max(1, (int) ($query['limit'] ?? 25));
@@ -299,13 +330,13 @@ final class OperationsConsoleApi
                 'source' => 'legacy-bitrix24',
                 'target' => 'target-bitrix24',
                 'startedAt' => (string) $row['created_at'],
-                'durationSec' => random_int(30, 4500),
+                'durationSec' => null,
                 'stage' => $this->deriveStage((string) $row['status']),
-                'progress' => random_int(0, 100),
-                'processed' => random_int(300, 4000),
-                'pending' => random_int(0, 500),
-                'failed' => random_int(0, 20),
-                'skipped' => random_int(0, 40),
+                'progress' => null,
+                'processed' => null,
+                'pending' => null,
+                'failed' => null,
+                'skipped' => null,
             ];
         }
 
@@ -315,6 +346,9 @@ final class OperationsConsoleApi
     /** @return array<string,mixed> */
     public function jobDetails(string $jobId): array
     {
+        if (($g = $this->ensureDemoMode('job_details', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => $jobId,
             'overview' => [
@@ -342,6 +376,9 @@ final class OperationsConsoleApi
      */
     public function conflicts(array $query): array
     {
+        if (($g = $this->ensureDemoMode('conflicts', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $limit = max(1, (int) ($query['limit'] ?? 50));
         $offset = max(0, (int) ($query['offset'] ?? 0));
         $items = [];
@@ -368,6 +405,9 @@ final class OperationsConsoleApi
      */
     public function integrity(array $query): array
     {
+        if (($g = $this->ensureDemoMode('integrity', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $limit = max(1, (int) ($query['limit'] ?? 50));
         $offset = max(0, (int) ($query['offset'] ?? 0));
         $items = [];
@@ -394,6 +434,9 @@ final class OperationsConsoleApi
      */
     public function workers(array $query): array
     {
+        if (($g = $this->ensureDemoMode('workers', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $items = [];
         for ($i = 1; $i <= 24; ++$i) {
             $items[] = [
@@ -495,6 +538,9 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null,x?:string,y?:string} $query @return array<string,mixed> */
     public function heatmap(array $query): array
     {
+        if (($g = $this->ensureDemoMode('heatmap', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $x = (string) ($query['x'] ?? 'entityType');
         $y = (string) ($query['y'] ?? 'phase');
         $xBuckets = ['deal', 'lead', 'contact', 'task', 'file'];
@@ -512,6 +558,9 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function mapping(array $query): array
     {
+        if (($g = $this->ensureDemoMode('mapping', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => (string) ($query['jobId'] ?? 'latest'),
             'requiredFields' => ['TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID'],
@@ -530,6 +579,9 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function diff(array $query): array
     {
+        if (($g = $this->ensureDemoMode('diff', $jobId ?? null)) !== null) {
+            return $g;
+        }
         $items = [];
         for ($i = 1; $i <= 40; ++$i) {
             $items[] = [
@@ -548,6 +600,9 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null,mode?:string|null} $query @return array<string,mixed> */
     public function replayPreview(array $query): array
     {
+        if (($g = $this->ensureDemoMode('replay_preview', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => (string) ($query['jobId'] ?? 'latest'),
             'mode' => (string) ($query['mode'] ?? 'resume'),
@@ -562,6 +617,9 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function systemHealth(array $query): array
     {
+        if (($g = $this->ensureDemoMode('system_health', $jobId ?? null)) !== null) {
+            return $g;
+        }
         return [
             'jobId' => (string) ($query['jobId'] ?? 'latest'),
             'throughputPerSec' => random_int(50, 220),
@@ -579,6 +637,28 @@ final class OperationsConsoleApi
                 'protectedSyncWindow' => '01:00-06:00 UTC',
             ],
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function unavailable(string $surface, ?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId,
+            'surface' => $surface,
+            'mode' => $this->demoMode ? 'demo' : 'real',
+            'status' => 'not_available',
+            'reason' => 'synthetic_telemetry_disabled_in_real_mode',
+            'demo_only' => true,
+        ];
+    }
+
+    private function ensureDemoMode(string $surface, ?string $jobId = null): ?array
+    {
+        if ($this->demoMode) {
+            return null;
+        }
+
+        return $this->unavailable($surface, $jobId);
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -631,7 +711,7 @@ final class OperationsConsoleApi
                 'startedAt' => (new DateTimeImmutable('-' . $id . ' hours'))->format(DATE_ATOM),
                 'durationSec' => random_int(300, 10000),
                 'stage' => ['extract', 'map', 'load', 'verify', 'sync'][$id % 5],
-                'progress' => random_int(0, 100),
+                'progress' => null,
                 'processed' => random_int(50, 7000),
                 'pending' => random_int(0, 800),
                 'failed' => random_int(0, 40),

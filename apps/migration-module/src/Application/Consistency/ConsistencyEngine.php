@@ -29,7 +29,7 @@ final class ConsistencyEngine
             ];
         }
 
-        return ['check' => 'entity_counts', 'healthy' => $ok, 'items' => $items];
+        return ['check' => 'entity_counts', 'depth' => 'structural', 'healthy' => $ok, 'items' => $items];
     }
 
     /** @param array<string,array<int,array<string,mixed>>> $source @param array<string,array<int,array<string,mixed>>> $target */
@@ -57,7 +57,7 @@ final class ConsistencyEngine
             ];
         }
 
-        return ['check' => 'field_parity', 'healthy' => $ok, 'items' => $items];
+        return ['check' => 'field_parity', 'depth' => 'mapping', 'healthy' => $ok, 'items' => $items];
     }
 
     /** @param array<int,array<string,mixed>> $rows @return list<string> */
@@ -115,6 +115,7 @@ final class ConsistencyEngine
 
         return [
             'check' => 'custom_fields',
+            'depth' => 'mapping',
             'source_total' => count($sourceMap),
             'target_total' => count($targetMap),
             'issues' => $issues,
@@ -132,6 +133,7 @@ final class ConsistencyEngine
 
         return [
             'check' => 'pipeline_stages',
+            'depth' => 'relation',
             'source_total' => count($sourceCodes),
             'target_total' => count($targetCodes),
             'missing_in_target' => $missingInTarget,
@@ -151,6 +153,10 @@ final class ConsistencyEngine
 
         return [
             'engine' => 'consistency',
+            'verify_depth' => 'full',
+            'checked' => ['entity_counts', 'field_parity', 'relationships', 'attachments', 'custom_fields', 'pipeline_stages'],
+            'not_checked' => ['source_to_target_adapter_live_content_diff'],
+            'limitations' => ['adapter_contract_depth_depends_on_runtime_adapter_availability'],
             'checks' => [
                 'entity_counts' => $counts,
                 'field_parity' => $fields,
