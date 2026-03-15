@@ -6,12 +6,15 @@ namespace MigrationModule\Infrastructure\Bitrix;
 
 final class BitrixRestClient
 {
+    private float $lastRequestAt = 0.0;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $authToken,
         private readonly int $timeoutSeconds = 30,
         private readonly int $maxRetries = 4,
         private readonly int $baseBackoffMs = 200,
+        private readonly int $rateLimitRps = 10,
     ) {
     }
 
@@ -78,12 +81,9 @@ final class BitrixRestClient
                     $result[] = $item;
                 }
             }
-            $next = isset($response['next']) ? (int) $response['next'] : -1;
 
-            if (count($items) >= $selectLimit) {
-                usleep(1000 * 80);
-            }
-        } while ($next >= 0);
+            $next = isset($response['next']) ? (int) $response['next'] : -1;
+        } while ($next >= 0 && count($items) >= $selectLimit);
 
         return $result;
     }
@@ -91,6 +91,8 @@ final class BitrixRestClient
     /** @param array<string,mixed> $params */
     private function performHttpCall(string $method, array $params): array
     {
+        $this->enforceRateLimit();
+
         $url = rtrim($this->baseUrl, '/') . '/' . $method . '.json';
         $params['auth'] = $this->authToken;
 
@@ -135,6 +137,20 @@ final class BitrixRestClient
         $retryAfter = isset($response['retry_after']) ? (int) $response['retry_after'] * 1000 : 0;
         $delay = max($retryAfter, (int) ($this->baseBackoffMs * (2 ** $attempt)));
         usleep($delay * 1000);
+    }
+
+    private function enforceRateLimit(): void
+    {
+        $rps = max(1, $this->rateLimitRps);
+        $minInterval = 1.0 / $rps;
+        $now = microtime(true);
+        $elapsed = $now - $this->lastRequestAt;
+
+        if ($this->lastRequestAt > 0.0 && $elapsed < $minInterval) {
+            usleep((int) (($minInterval - $elapsed) * 1000000));
+        }
+
+        $this->lastRequestAt = microtime(true);
     }
 
     private function isRetryableBitrixError(string $error): bool

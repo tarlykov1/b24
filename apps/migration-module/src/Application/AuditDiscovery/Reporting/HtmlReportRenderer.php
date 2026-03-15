@@ -12,6 +12,10 @@ final class HtmlReportRenderer
         $risk = htmlspecialchars((string) ($audit['summary']['risk_level'] ?? 'UNKNOWN'), ENT_QUOTES);
         $score = (int) ($audit['readiness_score'] ?? 0);
         $linkage = (array) ($audit['linkage'] ?? []);
+        $metrics = (array) ($audit['summary']['ownership_metrics'] ?? []);
+        $orphans = (array) ($audit['files']['orphans'] ?? []);
+        $acl = (array) ($audit['permissions']['acl'] ?? []);
+        $charts = (array) ($audit['files']['charts'] ?? []);
 
         return <<<HTML
 <!doctype html>
@@ -41,9 +45,9 @@ pre{overflow:auto;background:#111;color:#ddd;padding:12px;border-radius:8px}
 </ul>
 </div>
 <div class="card"><h2>Ownership charts data</h2>
-<p>ownership distribution</p><ul>{$this->pairs((array) ($ownership['charts']['ownership_distribution'] ?? []))}</ul>
-<p>file ownership by user</p><ul>{$this->pairs((array) ($ownership['charts']['file_ownership_by_user'] ?? []))}</ul>
-<p>tasks by responsible user</p><ul>{$this->pairs((array) ($ownership['charts']['tasks_by_responsible_user'] ?? []))}</ul>
+<p>ownership distribution</p><ul>{$this->pairs((array) ($charts['ownership_distribution'] ?? []))}</ul>
+<p>file ownership by user</p><ul>{$this->pairs((array) ($charts['file_ownership_by_user'] ?? []))}</ul>
+<p>tasks by responsible user</p><ul>{$this->pairs((array) ($charts['tasks_by_responsible_user'] ?? []))}</ul>
 </div>
 <div class="card"><h2>Strategy hints</h2><ul>{$this->hintsList($audit['strategy_hints'] ?? [])}</ul></div>
 <div class="card"><h2>Task / File Linkage Risks</h2><ul>{$this->linkageList($linkage)}</ul></div>
@@ -53,6 +57,24 @@ pre{overflow:auto;background:#111;color:#ddd;padding:12px;border-radius:8px}
 </body>
 </html>
 HTML;
+    }
+
+    private function num(int|float|string $value): string
+    {
+        return number_format((float) $value, 0, '.', ',');
+    }
+
+    /** @param array<int,array<string,mixed>> $pairs */
+    private function pairs(array $pairs): string
+    {
+        $items = '';
+        foreach ($pairs as $pair) {
+            $owner = htmlspecialchars((string) ($pair['owner_id'] ?? 'n/a'), ENT_QUOTES);
+            $count = $this->num((int) ($pair['count'] ?? 0));
+            $items .= "<li>{$owner}: {$count}</li>";
+        }
+
+        return $items;
     }
 
     private function hintsList(array $hints): string

@@ -7,6 +7,7 @@ $commands = [
     'php bin/migration-module audit:summary',
     'php bin/migration-module audit:linkage',
     'php bin/migration-module audit:report',
+    'php bin/migration-module migration audit:source',
 ];
 
 foreach ($commands as $command) {
