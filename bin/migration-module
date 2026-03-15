@@ -156,7 +156,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
     }
 
     if ($command === 'validate') {
@@ -399,6 +399,119 @@ try {
                 $entityRef = $argv[4] ?? '';
                 [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
                 out($diffEngine->compare($entityType, $sourceId, ['id' => $sourceId], ['id' => $sourceId]));
+            case 'delta:scan':
+                $entityFilter = (string) ($argv[4] ?? 'all');
+                $phase = 'incremental';
+                foreach (array_slice($argv, 4) as $arg) {
+                    if (str_starts_with((string) $arg, '--phase=')) {
+                        $phase = (string) substr((string) $arg, 8);
+                    }
+                }
+                $allowedPhases = ['initial_bulk', 'incremental', 'pre_cutover', 'final_cutover'];
+                if (!in_array($phase, $allowedPhases, true)) {
+                    out(['error' => 'Unsupported delta phase', 'phase' => $phase, 'allowed' => $allowedPhases], 1);
+                }
+
+                $scanId = 'scan_' . bin2hex(random_bytes(4));
+                $now = date(DATE_ATOM);
+                $batchSize = max(1, (int) ($config['batch_size'] ?? 100));
+                $entityTypes = $entityFilter === 'all' ? $sourceAdapter->entityTypes() : [$entityFilter];
+                $summary = ['scan_id' => $scanId, 'phase' => $phase, 'job_id' => $jobForCommand, 'entities' => []];
+
+                foreach ($entityTypes as $entityType) {
+                    $existingStateRows = $storage->deltaStates($jobForCommand, $entityType);
+                    $existing = [];
+                    foreach ($existingStateRows as $row) {
+                        $existing[(string) $row['entity_id']] = $row;
+                    }
+
+                    $seen = [];
+                    $offset = 0;
+                    $counts = ['created' => 0, 'updated' => 0, 'deleted' => 0, 'reassigned' => 0];
+                    $lastEntityId = null;
+                    $latestTs = null;
+                    while (true) {
+                        $batch = $sourceAdapter->fetch($entityType, $offset, $batchSize);
+                        if ($batch === []) {
+                            break;
+                        }
+
+                        foreach ($batch as $record) {
+                            $entityId = (string) ($record['id'] ?? '');
+                            if ($entityId === '') {
+                                continue;
+                            }
+                            $seen[$entityId] = true;
+                            $lastEntityId = $entityId;
+                            $updatedAt = (string) ($record['updated_at'] ?? $record['modified_at'] ?? $now);
+                            if ($latestTs === null || strtotime($updatedAt) > strtotime($latestTs)) {
+                                $latestTs = $updatedAt;
+                            }
+                            $ownerKey = (string) ($record['responsible_id'] ?? $record['assigned_to'] ?? $record['owner_id'] ?? $record['user_id'] ?? '');
+
+                            $fingerprintRecord = $record;
+                            unset($fingerprintRecord['updated_at'], $fingerprintRecord['modified_at']);
+                            $fingerprint = hash('sha256', (string) json_encode($fingerprintRecord, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                            $previous = $existing[$entityId] ?? null;
+                            $action = null;
+                            if ($previous === null || (int) ($previous['deleted'] ?? 0) === 1) {
+                                $action = 'created';
+                            } elseif (((string) ($previous['owner_key'] ?? '')) !== $ownerKey) {
+                                $action = 'reassigned';
+                            } elseif (((string) ($previous['fingerprint'] ?? '')) !== $fingerprint) {
+                                $action = 'updated';
+                            }
+
+                            if ($action !== null) {
+                                $counts[$action]++;
+                                $storage->saveDeltaChange($jobForCommand, $scanId, $phase, $entityType, $entityId, $action, $fingerprint, $record);
+                            }
+
+                            $storage->upsertDeltaState($jobForCommand, $entityType, $entityId, $fingerprint, $ownerKey, $updatedAt, 0);
+                        }
+
+                        $offset += count($batch);
+                    }
+
+                    foreach ($existing as $entityId => $prev) {
+                        if (!isset($seen[$entityId]) && (int) ($prev['deleted'] ?? 0) === 0) {
+                            $counts['deleted']++;
+                            $storage->saveDeltaChange($jobForCommand, $scanId, $phase, $entityType, $entityId, 'deleted', (string) ($prev['fingerprint'] ?? ''), ['id' => $entityId]);
+                            $storage->upsertDeltaState($jobForCommand, $entityType, $entityId, (string) ($prev['fingerprint'] ?? ''), (string) ($prev['owner_key'] ?? ''), (string) ($prev['updated_at'] ?? $now), 1);
+                        }
+                    }
+
+                    $watermark = hash('sha256', $jobForCommand . '|' . $entityType . '|' . $scanId . '|' . (string) ($latestTs ?? $now));
+                    $storage->saveDeltaCursor($jobForCommand, $entityType, $latestTs ?? $now, $lastEntityId, $watermark, $phase);
+                    $summary['entities'][$entityType] = $counts + ['last_entity_id' => $lastEntityId, 'last_sync_timestamp' => $latestTs ?? $now, 'watermark' => $watermark];
+                }
+                out($summary);
+            case 'delta:apply':
+                $scanId = $argv[4] ?? null;
+                $changes = $storage->pendingDeltaChanges($jobForCommand, is_string($scanId) ? $scanId : null);
+                $applied = ['created' => 0, 'updated' => 0, 'deleted' => 0, 'reassigned' => 0];
+                $processed = 0;
+
+                foreach ($changes as $change) {
+                    $payload = json_decode((string) ($change['payload'] ?? '{}'), true);
+                    if (!is_array($payload)) {
+                        $payload = [];
+                    }
+
+                    $action = (string) ($change['action'] ?? 'updated');
+                    $entityType = (string) ($change['entity_type'] ?? '');
+                    if (in_array($action, ['created', 'updated', 'reassigned'], true)) {
+                        $targetAdapter->upsert($entityType, $payload, false);
+                    }
+
+                    $storage->markDeltaChangeApplied((int) $change['id']);
+                    $applied[$action] = ($applied[$action] ?? 0) + 1;
+                    $processed++;
+                }
+
+                out(['job_id' => $jobForCommand, 'scan_id' => $scanId, 'processed' => $processed, 'applied' => $applied, 'idempotent' => true]);
+            case 'delta:status':
+                out(['job_id' => $jobForCommand] + $storage->deltaStatus($jobForCommand));
             default:
                 out(['error' => 'Unknown migration subcommand', 'subcommand' => $sub], 1);
         }

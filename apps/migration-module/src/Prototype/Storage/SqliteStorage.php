@@ -146,6 +146,128 @@ final class SqliteStorage
         return is_array($decoded) ? $decoded : null;
     }
 
+
+
+    /** @return array<string,mixed>|null */
+    public function deltaCursor(string $jobId, string $entityType): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM delta_cursors WHERE job_id=:job_id AND entity_type=:entity_type LIMIT 1');
+        $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    public function saveDeltaCursor(string $jobId, string $entityType, ?string $lastSyncTimestamp, ?string $lastEntityId, ?string $watermark, string $phase): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO delta_cursors(job_id, entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at) VALUES(:job_id,:entity_type,:last_sync_timestamp,:last_entity_id,:watermark,:phase,CURRENT_TIMESTAMP)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'last_sync_timestamp' => $lastSyncTimestamp,
+            'last_entity_id' => $lastEntityId,
+            'watermark' => $watermark,
+            'phase' => $phase,
+        ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function deltaStates(string $jobId, string $entityType): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM delta_entity_state WHERE job_id=:job_id AND entity_type=:entity_type');
+        $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function upsertDeltaState(string $jobId, string $entityType, string $entityId, string $fingerprint, ?string $ownerKey, ?string $updatedAt, int $deleted): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO delta_entity_state(job_id, entity_type, entity_id, fingerprint, owner_key, updated_at, deleted, last_seen_at) VALUES(:job_id,:entity_type,:entity_id,:fingerprint,:owner_key,:updated_at,:deleted,CURRENT_TIMESTAMP)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'fingerprint' => $fingerprint,
+            'owner_key' => $ownerKey,
+            'updated_at' => $updatedAt,
+            'deleted' => $deleted,
+        ]);
+    }
+
+    public function saveDeltaChange(string $jobId, string $scanId, string $phase, string $entityType, string $entityId, string $action, string $fingerprint, array $payload): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO delta_changes(job_id, scan_id, phase, entity_type, entity_id, action, fingerprint, payload, status) VALUES(:job_id,:scan_id,:phase,:entity_type,:entity_id,:action,:fingerprint,:payload,:status)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'scan_id' => $scanId,
+            'phase' => $phase,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'action' => $action,
+            'fingerprint' => $fingerprint,
+            'payload' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'status' => 'pending',
+        ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function pendingDeltaChanges(string $jobId, ?string $scanId = null): array
+    {
+        $sql = 'SELECT * FROM delta_changes WHERE job_id=:job_id AND status="pending"';
+        $params = ['job_id' => $jobId];
+        if ($scanId !== null && $scanId !== '') {
+            $sql .= ' AND scan_id=:scan_id';
+            $params['scan_id'] = $scanId;
+        }
+        $sql .= ' ORDER BY id';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function markDeltaChangeApplied(int $id): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE delta_changes SET status=:status, applied_at=CURRENT_TIMESTAMP WHERE id=:id');
+        $stmt->execute(['status' => 'applied', 'id' => $id]);
+    }
+
+    /** @return array<string,mixed> */
+    public function deltaStatus(string $jobId): array
+    {
+        $totals = [
+            'pending' => 0,
+            'applied' => 0,
+            'total' => 0,
+        ];
+
+        $stmt = $this->pdo->prepare('SELECT status, COUNT(*) as c FROM delta_changes WHERE job_id=:job_id GROUP BY status');
+        $stmt->execute(['job_id' => $jobId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $status = (string) ($row['status'] ?? 'pending');
+            $count = (int) ($row['c'] ?? 0);
+            $totals[$status] = $count;
+            $totals['total'] += $count;
+        }
+
+        $byAction = [];
+        $stmt = $this->pdo->prepare('SELECT action, COUNT(*) as c FROM delta_changes WHERE job_id=:job_id GROUP BY action');
+        $stmt->execute(['job_id' => $jobId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $byAction[(string) $row['action']] = (int) $row['c'];
+        }
+
+        $cursors = [];
+        $stmt = $this->pdo->prepare('SELECT entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at FROM delta_cursors WHERE job_id=:job_id ORDER BY entity_type');
+        $stmt->execute(['job_id' => $jobId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $cursors[] = $row;
+        }
+
+        return ['totals' => $totals, 'actions' => $byAction, 'cursors' => $cursors];
+    }
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {
