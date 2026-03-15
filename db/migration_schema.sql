@@ -266,184 +266,153 @@ CREATE TABLE IF NOT EXISTS migration_target_change_markers (
     CONSTRAINT fk_target_change_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Cutover Planning & Go-Live Orchestrator
-CREATE TABLE IF NOT EXISTS cutover_plan (
+CREATE TABLE IF NOT EXISTS hypercare_window (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    job_id BIGINT UNSIGNED NULL,
-    source_environment VARCHAR(128) NOT NULL,
-    target_environment VARCHAR(128) NOT NULL,
-    strategy VARCHAR(64) NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'draft',
-    current_version INT NOT NULL DEFAULT 1,
-    planned_window_start DATETIME NULL,
-    freeze_start DATETIME NULL,
-    switch_point DATETIME NULL,
-    max_allowed_downtime_min INT NOT NULL DEFAULT 60,
-    created_by VARCHAR(128) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_cutover_plan (plan_id),
-    KEY idx_cutover_plan_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_plan_version (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    version_no INT NOT NULL,
-    payload_json JSON NOT NULL,
-    checksum VARCHAR(128) NOT NULL,
-    changed_by VARCHAR(128) NOT NULL,
-    change_reason VARCHAR(255) NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    window_name VARCHAR(64) NOT NULL,
+    start_at DATETIME NOT NULL,
+    end_at DATETIME NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uq_cutover_plan_version (plan_id, version_no)
+    KEY idx_hypercare_window_job (job_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_approval (
+CREATE TABLE IF NOT EXISTS hypercare_event (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    role VARCHAR(64) NOT NULL,
-    actor_id VARCHAR(128) NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-    note VARCHAR(255) NULL,
-    approved_at DATETIME NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_cutover_approval_plan (plan_id, role, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_phase_run (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    phase VARCHAR(64) NOT NULL,
-    state VARCHAR(64) NOT NULL,
-    started_at DATETIME NOT NULL,
-    finished_at DATETIME NULL,
-    timeout_at DATETIME NULL,
-    meta_json JSON NULL,
-    PRIMARY KEY (id),
-    KEY idx_cutover_phase_plan (plan_id, phase, state)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_event_log (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    actor_id VARCHAR(128) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
     event_type VARCHAR(64) NOT NULL,
-    payload_json JSON NULL,
-    prev_hash VARCHAR(128) NOT NULL,
-    event_hash VARCHAR(128) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_cutover_event_plan (plan_id, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_readiness_snapshot (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    score INT NOT NULL,
-    recommendation VARCHAR(64) NOT NULL,
-    blockers_json JSON NULL,
-    warnings_json JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_cutover_readiness_plan (plan_id, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_blocker (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    blocker_type VARCHAR(64) NOT NULL,
-    severity VARCHAR(16) NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'open',
-    details_json JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_freeze_exception (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    actor_id VARCHAR(128) NOT NULL,
-    domain VARCHAR(64) NOT NULL,
-    reason VARCHAR(255) NOT NULL,
+    severity VARCHAR(32) NOT NULL,
     payload_json JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    KEY idx_hypercare_event_job (job_id, severity)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_preflight_result (
+CREATE TABLE IF NOT EXISTS integrity_scan_result (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    status VARCHAR(32) NOT NULL,
-    checks_json JSON NOT NULL,
-    override_actor_id VARCHAR(128) NULL,
-    override_reason VARCHAR(255) NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    integrity_score DECIMAL(6,4) NOT NULL,
+    summary_json JSON NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    KEY idx_integrity_scan_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_smoke_test_result (
+CREATE TABLE IF NOT EXISTS reconciliation_task (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    status VARCHAR(32) NOT NULL,
-    checks_json JSON NOT NULL,
-    decision VARCHAR(64) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cutover_stabilization_issue (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
     issue_type VARCHAR(64) NOT NULL,
-    severity VARCHAR(16) NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'open',
-    impact_score INT NOT NULL DEFAULT 0,
-    details_json JSON NULL,
+    strategy VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    payload_json JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    KEY idx_reconciliation_task_job (job_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_rollback_run (
+CREATE TABLE IF NOT EXISTS late_write_event (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    rollback_type VARCHAR(64) NOT NULL,
-    possibility VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id VARCHAR(128) NOT NULL,
+    window_name VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    payload_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_late_write_job (job_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS adoption_metric (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    metric_name VARCHAR(64) NOT NULL,
+    metric_value DECIMAL(12,4) NOT NULL,
+    measured_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_adoption_metric_job (job_id, metric_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS business_flow_check (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    flow_name VARCHAR(128) NOT NULL,
     status VARCHAR(32) NOT NULL,
     details_json JSON NULL,
-    started_at DATETIME NOT NULL,
-    finished_at DATETIME NULL,
-    PRIMARY KEY (id)
+    checked_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_business_flow_job (job_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_runbook (
+CREATE TABLE IF NOT EXISTS performance_metric (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    version_no INT NOT NULL,
-    format VARCHAR(16) NOT NULL,
-    content LONGTEXT NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    metric_name VARCHAR(64) NOT NULL,
+    pre_value DECIMAL(12,4) NOT NULL,
+    post_value DECIMAL(12,4) NOT NULL,
+    regression_ratio DECIMAL(8,4) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    KEY idx_cutover_runbook_plan (plan_id, version_no)
+    KEY idx_performance_metric_job (job_id, metric_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_comm_template (
+CREATE TABLE IF NOT EXISTS optimization_recommendation (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    template_key VARCHAR(64) NOT NULL,
-    locale VARCHAR(8) NOT NULL DEFAULT 'en',
-    body TEXT NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    area VARCHAR(64) NOT NULL,
+    recommendation TEXT NOT NULL,
+    impact_score INT NOT NULL,
+    risk_level VARCHAR(32) NOT NULL,
+    implementation_effort VARCHAR(16) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uq_cutover_template_locale (template_key, locale)
+    KEY idx_optimization_recommendation_job (job_id, area)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cutover_window_recommendation (
+CREATE TABLE IF NOT EXISTS ux_telemetry_event (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    plan_id VARCHAR(64) NOT NULL,
-    recommendation_json JSON NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    feature VARCHAR(128) NOT NULL,
+    duration_ms INT NOT NULL DEFAULT 0,
+    payload_json JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
+    PRIMARY KEY (id),
+    KEY idx_ux_telemetry_job (job_id, event_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_success_score (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    score DECIMAL(6,4) NOT NULL,
+    result_bucket VARCHAR(32) NOT NULL,
+    components_json JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_success_score_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_final_report (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    report_json JSON NOT NULL,
+    json_path VARCHAR(255) NULL,
+    html_path VARCHAR(255) NULL,
+    pdf_path VARCHAR(255) NULL,
+    docx_path VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_final_report_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS migration_archive (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    archive_path VARCHAR(255) NOT NULL,
+    archive_manifest_json JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_migration_archive_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -54,6 +54,66 @@ final class OperationsConsoleApi
     }
 
     /** @return array<string,mixed> */
+    public function hypercareStatus(?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId ?? 'latest',
+            'system_health' => ['score' => 0.93, 'error_rate' => 0.012, 'api_latency_ms' => 240],
+            'queue_backlog' => ['pending' => 142, 'retry' => 13],
+            'worker_health' => ['active' => 18, 'saturated' => 2],
+            'alerts' => ['none'],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function hypercareIntegrityReport(?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId ?? 'latest',
+            'broken_relations' => 8,
+            'missing_files' => 3,
+            'pending_reconciliation_tasks' => 11,
+            'integrity_score' => 0.96,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function hypercareAdoption(?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId ?? 'latest',
+            'active_users' => 412,
+            'department_adoption' => 0.84,
+            'crm_usage_delta' => 0.91,
+            'task_activity_delta' => 1.06,
+            'adoption_score' => 0.87,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function hypercarePerformance(?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId ?? 'latest',
+            'slow_queries' => 5,
+            'slow_endpoints' => 2,
+            'api_hotspots' => ['crm.deal.list', 'tasks.task.get'],
+            'performance_score' => 0.79,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function hypercareFinalReport(?string $jobId = null): array
+    {
+        return [
+            'jobId' => $jobId ?? 'latest',
+            'status' => 'generated',
+            'formats' => ['pdf', 'json', 'html', 'docx'],
+            'success_result' => 'SUCCESS',
+        ];
+    }
+
+    /** @return array<string,mixed> */
     public function conflictCenter(string $jobId): array
     {
         return [

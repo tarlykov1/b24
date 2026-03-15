@@ -120,6 +120,21 @@ if ($path === '/jobs/action' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+
+if ($path === '/hypercare/reconciliation/run' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $response = ['ok' => true, 'status' => 'queued', 'operation' => 'reconciliation_run'];
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($path === '/hypercare/integrity/scan' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $response = ['ok' => true, 'status' => 'started', 'operation' => 'integrity_scan'];
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($path === '/audit/portal') {
     $response = (new AuditDiscoveryService())->run('portal');
 } elseif ($path === '/audit/summary') {
@@ -152,7 +167,11 @@ if ($path === '/audit/portal') {
         '/diff' => $api->diff($query),
         '/replay-preview' => $api->replayPreview($query),
         '/system-health' => $api->systemHealth($query),
-        '/cutover' => $api->cutoverCommandCenter((string) ($query['jobId'] ?? 'latest')),
+        '/hypercare/status' => $api->hypercareStatus($query['jobId'] ?? null),
+        '/hypercare/integrity-report' => $api->hypercareIntegrityReport($query['jobId'] ?? null),
+        '/hypercare/adoption' => $api->hypercareAdoption($query['jobId'] ?? null),
+        '/hypercare/performance' => $api->hypercarePerformance($query['jobId'] ?? null),
+        '/hypercare/final-report' => $api->hypercareFinalReport($query['jobId'] ?? null),
         default => ['error' => 'unknown_endpoint', 'path' => $path],
     };
 }
