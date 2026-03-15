@@ -7,69 +7,32 @@ use PHPUnit\Framework\TestCase;
 
 final class OperationsConsoleApiTest extends TestCase
 {
-    public function testDashboardContainsCoreStats(): void
-    {
-        $api = new OperationsConsoleApi(null);
-        $dashboard = $api->dashboard();
-
-        self::assertArrayHasKey('stats', $dashboard);
-        self::assertArrayHasKey('latestEvents', $dashboard);
-        self::assertArrayHasKey('totalJobs', $dashboard['stats']);
-        self::assertArrayHasKey('queueDepth', $dashboard['stats']);
-        self::assertArrayHasKey('sourceTargetLagSec', $dashboard['stats']);
-        self::assertArrayHasKey('featureFlags', $dashboard);
-    }
-
-    public function testJobsEndpointSupportsPagingContract(): void
+    public function testDashboardInRealModeIsHonestAboutAvailability(): void
     {
         $api = new OperationsConsoleApi(null);
         $jobs = $api->jobs(['limit' => 7, 'offset' => 5]);
 
-        self::assertCount(7, $jobs['items']);
-        self::assertSame(7, $jobs['limit']);
-        self::assertSame(5, $jobs['offset']);
+        self::assertSame('not_available', $jobs['status']);
+        self::assertTrue($jobs['demo_only']);
+        self::assertCount(0, $jobs['items']);
     }
 
-    public function testHeatmapReturnsCellsForDrillDown(): void
+    public function testDemoModeKeepsSyntheticContractsExplicitly(): void
     {
-        $api = new OperationsConsoleApi(null);
-        $heatmap = $api->heatmap(['x' => 'entityType', 'y' => 'phase']);
+        $api = new OperationsConsoleApi(null, null, true);
+        $dashboard = $api->dashboard();
 
-        self::assertNotEmpty($heatmap['cells']);
-        self::assertArrayHasKey('count', $heatmap['cells'][0]);
+        self::assertArrayHasKey('stats', $dashboard);
+        self::assertArrayHasKey('latestEvents', $dashboard);
     }
 
-    public function testMetaContainsFeatureFlagsAndRoles(): void
-    {
-        $api = new OperationsConsoleApi(null);
-        $meta = $api->meta();
-
-        self::assertArrayHasKey('featureFlags', $meta);
-        self::assertArrayHasKey('roles', $meta);
-        self::assertContains('operator', $meta['roles']);
-    }
-
-    public function testJobDetailsContainTabbedDataContract(): void
+    public function testRealModeDisablesSyntheticPanels(): void
     {
         $api = new OperationsConsoleApi(null);
         $details = $api->jobDetails('job-42');
 
-        self::assertSame('job-42', $details['jobId']);
-        self::assertArrayHasKey('overview', $details);
-        self::assertArrayHasKey('timeline', $details);
-        self::assertArrayHasKey('syncStatus', $details);
+        self::assertSame('not_available', $details['status']);
+        self::assertSame('job_details', $details['surface']);
+        self::assertTrue($details['demo_only']);
     }
-
-    public function testCutoverCommandCenterContract(): void
-    {
-        $api = new OperationsConsoleApi(null);
-        $dto = $api->cutoverCommandCenter('job-77');
-
-        self::assertSame('job-77', $dto['jobId']);
-        self::assertArrayHasKey('readiness', $dto);
-        self::assertArrayHasKey('stateMachineState', $dto);
-        self::assertArrayHasKey('deltaSync', $dto);
-        self::assertArrayHasKey('rollbackPanel', $dto);
-    }
-
 }

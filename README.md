@@ -4,7 +4,7 @@
 
 ## Статус проекта / зрелость
 
-**Текущий уровень зрелости:** **прототип с рабочим сквозным CLI-флоу**.
+**Текущий уровень зрелости:** **stabilized prototype baseline (truth-hardened), не production-ready**.
 
 - **Реализовано:** прототип рантайма (`validate` → `dry-run` → `execute`/`resume` → `verify`/`report`/`status`) с персистентностью в SQLite и stub-адаптерами.
 - **Реализовано (укрепление пилота):** `system:check`, вход в админку + CSRF, эндпоинты `/health` и `/ready`, раздельные конфигурационные файлы.
@@ -44,7 +44,7 @@ Verify/report/status
 
 - CLI entrypoint: `bin/migration-module`.
 - Команды, доступные в `help`:
-  `validate`, `plan`, `dry-run`, `execute`, `pause`, `resume`, `verify`, `verify-only`, `report`, `status`, `system:check`, а также хелперы `migration <subcommand>` (`pause`, `resume`, `retry`, `repair`, `diff`).
+  `validate`, `create-job`, `plan`, `dry-run`, `execute`, `pause`, `resume`, `verify`, `verify-only`, `report`, `status`, `system:check` (для mutating/read команд обязателен существующий `job_id`), а также хелперы `migration <subcommand>` (`pause`, `resume`, `retry`, `repair`, `diff`).
 - Конвейер прототип-рантайма:
   - загрузка конфигурации из `migration.config.yml`
   - инициализация схемы + создание job
@@ -69,19 +69,23 @@ Verify/report/status
 ### Прототип / на заглушках
 
 - Источник и цель по умолчанию — stub-адаптеры с детерминированными fixture-подобными данными.
-- Многие endpoints консоли операций возвращают синтетические/демо-данные, когда нет реализации через БД.
+- В real mode (`demo_mode=false`) synthetic telemetry отключена: API возвращает `not_available`/`demo_only`, если нет runtime truth.
+- Synthetic панели доступны только в явном demo mode (`demo_mode=true`).
 - Продвинутая reconciliation и policy-оркестрация на этом этапе — в основном сервисная логика и документационно-ориентированный слой.
 
 ## Быстрый старт
 
 ```bash
 php bin/migration-module validate
-php bin/migration-module dry-run
-php bin/migration-module execute
-php bin/migration-module resume
-php bin/migration-module verify
-php bin/migration-module report
-php bin/migration-module status
+php bin/migration-module create-job execute
+# команда возвращает job_id, далее используйте его явно
+php bin/migration-module plan migration.config.yml <job_id>
+php bin/migration-module dry-run migration.config.yml <job_id>
+php bin/migration-module execute migration.config.yml <job_id>
+php bin/migration-module resume migration.config.yml <job_id>
+php bin/migration-module verify migration.config.yml <job_id>
+php bin/migration-module report migration.config.yml <job_id>
+php bin/migration-module status migration.config.yml <job_id>
 php bin/migration-module system:check
 ```
 
@@ -301,3 +305,12 @@ php bin/migration-module audit:velocity --days=30 --sample-size=1000 --output=js
 - `reports/change_velocity_report.json` и `reports/velocity_heatmap.json` (артефакты audit change velocity)
 
 Подробности: `docs/audit-discovery.md`.
+
+
+## Lifecycle contract (stabilization phase)
+
+Обязательные статусы job: `created -> validated -> planned -> dry_run_completed -> running -> paused/failed/completed -> verified -> reconciled`.
+
+- Недопустимые переходы блокируются с machine-readable ошибкой `invalid_job_transition`.
+- `status/report/verify/resume` не создают новый job неявно; для отсутствующего `job_id` возвращается `job_not_found`.
+- Shallow/full verify разделены по `verify_depth`; output явно содержит `checked/not_checked/limitations`.

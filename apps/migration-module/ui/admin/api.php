@@ -115,7 +115,8 @@ if ($databaseUrl !== '') {
 }
 
 $security = new SecurityGovernanceService();
-$api = new OperationsConsoleApi($pdo, $security);
+$demoMode = (bool) filter_var((string) ($query['demo_mode'] ?? ($_ENV['MIGRATION_DEMO_MODE'] ?? '0')), FILTER_VALIDATE_BOOLEAN);
+$api = new OperationsConsoleApi($pdo, $security, $demoMode);
 
 $role = (string) ($query['role'] ?? 'MigrationAdmin');
 $context = new SecurityContext(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MigrationModule\Prototype\Storage;
 
 use PDO;
+use DomainException;
 
 final class SqliteStorage
 {
@@ -36,12 +37,35 @@ final class SqliteStorage
     {
         $id = 'job_' . bin2hex(random_bytes(4));
         $stmt = $this->pdo->prepare('INSERT INTO jobs(id, mode, status) VALUES(:id,:mode,:status)');
-        $stmt->execute(['id' => $id, 'mode' => $mode, 'status' => 'running']);
+        $stmt->execute(['id' => $id, 'mode' => $mode, 'status' => 'created']);
         return $id;
+    }
+
+
+    public function jobExists(string $jobId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT 1 FROM jobs WHERE id=:id LIMIT 1');
+        $stmt->execute(['id' => $jobId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    public function assertJobExists(string $jobId): void
+    {
+        if ($this->jobExists($jobId)) {
+            return;
+        }
+
+        throw new DomainException((string) json_encode([
+            'error' => 'job_not_found',
+            'job_id' => $jobId,
+            'message' => 'Requested job-id does not exist.',
+        ], JSON_UNESCAPED_UNICODE));
     }
 
     public function setJobStatus(string $jobId, string $status): void
     {
+        $this->assertJobExists($jobId);
         $stmt = $this->pdo->prepare('UPDATE jobs SET status=:status, updated_at=CURRENT_TIMESTAMP WHERE id=:id');
         $stmt->execute(['id' => $jobId, 'status' => $status]);
     }

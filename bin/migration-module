@@ -74,7 +74,7 @@ function out(array $payload, int $code = 0): never {
 }
 
 $command = $argv[1] ?? 'help';
-$configPath = str_starts_with($command, 'migration:workers:')
+$configPath = str_starts_with($command, 'migration:workers:') || in_array($command, ['create-job', 'help', 'validate'], true)
     ? 'migration.config.yml'
     : ($command === 'migration'
         ? ((isset($argv[5]) && str_ends_with((string) $argv[5], '.yml')) ? (string) $argv[5] : 'migration.config.yml')
@@ -163,7 +163,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
+        out(['commands' => ['validate', 'create-job', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
     }
 
     if ($command === 'validate') {
@@ -171,6 +171,11 @@ try {
     }
 
     $storage->initSchema();
+
+    if ($command === 'create-job') {
+        $mode = (string) ($argv[2] ?? 'execute');
+        out(['job_id' => $storage->createJob($mode), 'status' => 'created', 'mode' => $mode]);
+    }
 
     if (str_starts_with($command, 'cutover:')) {
         $goLivePlan = new CutoverPlanService();
@@ -362,10 +367,12 @@ try {
     if (str_starts_with($command, 'migration:workers:')) {
         $limiter = new AdaptiveRateLimiter((string) ($config['throttling']['profile'] ?? 'safe'));
         $controlPlane = new DistributedWorkerControlPlane($storage, $limiter);
-        $workerJobId = $argv[2] ?? 'job-workers-default';
+        $workerJobId = $argv[2] ?? '';
+        if ($workerJobId === '') {
+            out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' <job_id>'], 1);
+        }
 
-        switch ($command) {
-            case 'migration:workers:init':
+        switch ($command) {            case 'migration:workers:init':
                 $queues = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[3] ?? 'users,tasks,crm,files')))));
                 $workerIds = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[4] ?? 'worker-1,worker-2')))));
                 out($controlPlane->bootstrap($workerJobId, $queues, $workerIds));
@@ -387,7 +394,14 @@ try {
         }
     }
 
-    $jobId = $argv[3] ?? $storage->createJob($command);
+    $jobId = $argv[3] ?? null;
+    if ($jobId === null && !in_array($command, ['help', 'validate', 'create-job', 'system:check'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
+        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' <config> <job_id>'], 1);
+    }
+
+    if (in_array($command, ['plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status'], true) && is_string($jobId) && $jobId !== '') {
+        $storage->assertJobExists($jobId);
+    }
 
     if ($command === 'migration') {
         $jobController = new JobController($storage->pdo());
@@ -464,11 +478,18 @@ try {
         };
 
         $sub = $argv[2] ?? 'help';
-        $jobForCommand = $argv[3] ?? $jobId;
+        $jobForCommand = $argv[3] ?? null;
 
         if ($sub === 'audit:source') {
             $deep = in_array('--deep', $argv, true);
             out((new SourceAuditEngine())->run($deep));
+        }
+
+        if (!in_array($sub, ['audit:source', 'strategy:generate', 'strategy:visualize', 'help'], true) && ($jobForCommand === null || $jobForCommand === '')) {
+            out(['error' => 'job_id_required', 'command' => 'migration ' . $sub, 'usage' => 'migration ' . $sub . ' <job_id>'], 1);
+        }
+        if (!in_array($sub, ['audit:source', 'strategy:generate', 'strategy:visualize', 'help'], true)) {
+            $storage->assertJobExists((string) $jobForCommand);
         }
 
         switch ($sub) {
@@ -487,11 +508,11 @@ try {
                 [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
                 out($diffEngine->compare($entityType, $sourceId, ['id' => $sourceId], ['id' => $sourceId]));
             case 'verify:counts':
-                out($consistencyEngine->verifyCounts($allSource(), $allTarget()));
+                out(['job_id' => $jobForCommand, 'verify_depth' => 'structural', 'checked' => ['entity_counts'], 'not_checked' => ['relations', 'attachments', 'content', 'reconciliation']] + $consistencyEngine->verifyCounts($allSource(), $allTarget()));
             case 'verify:relations':
-                out($consistencyEngine->verifyRelationships($relationDataset()));
+                out(['job_id' => $jobForCommand, 'verify_depth' => 'relation', 'checked' => ['relationships'], 'not_checked' => ['entity_counts', 'attachments', 'content', 'reconciliation']] + $consistencyEngine->verifyRelationships($relationDataset()));
             case 'verify:attachments':
-                out($consistencyEngine->verifyAttachments($attachmentDataset()));
+                out(['job_id' => $jobForCommand, 'verify_depth' => 'content', 'checked' => ['attachments'], 'not_checked' => ['entity_counts', 'relationships', 'reconciliation']] + $consistencyEngine->verifyAttachments($attachmentDataset()));
             case 'verify:full':
                 out($consistencyEngine->verifyFull([
                     'source_entities' => $allSource(),
@@ -674,5 +695,11 @@ try {
             out(['error' => 'Unknown command', 'command' => $command], 1);
     }
 } catch (Throwable $e) {
-    out(['error' => $e->getMessage(), 'hint' => 'Prototype mode: run "php bin/migration-module validate" first.'], 1);
+    $raw = $e->getMessage();
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        out(['error' => $decoded], 1);
+    }
+
+    out(['error' => $raw, 'hint' => 'Prototype mode: run "php bin/migration-module validate" first.'], 1);
 }
