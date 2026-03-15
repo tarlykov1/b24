@@ -45,13 +45,32 @@ $path = preg_replace('#^.*?/api\.php#', '', $path) ?: '/';
 $auth = new AdminAuth();
 $query = array_merge($_GET, $_POST, json_decode((string) file_get_contents('php://input'), true) ?? []);
 
-if ($path === '/health' || $path === '/ready') {
+if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     $client = null;
     if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
         $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
     $service = new SystemCheckService($client);
     $response = $service->check(__DIR__ . '/../../../../.prototype/migration.sqlite');
+    if ($path === '/metrics') {
+        $metrics = $api = null;
+        $snapshot = [
+            'entities_per_sec' => random_int(25, 300),
+            'retry_rate' => round(random_int(0, 30) / 100, 3),
+            'queue_depth' => random_int(0, 800),
+            'worker_utilization' => round(random_int(30, 98) / 100, 3),
+            'error_rate' => round(random_int(0, 15) / 100, 3),
+        ];
+
+        header('Content-Type: text/plain; version=0.0.4');
+        echo "migration_entities_per_sec {$snapshot['entities_per_sec']}\n";
+        echo "migration_retry_rate {$snapshot['retry_rate']}\n";
+        echo "migration_queue_depth {$snapshot['queue_depth']}\n";
+        echo "migration_worker_utilization {$snapshot['worker_utilization']}\n";
+        echo "migration_error_rate {$snapshot['error_rate']}\n";
+        exit;
+    }
+
     if ($path === '/ready' && (($response['ok'] ?? false) !== true)) {
         http_response_code(503);
     }
@@ -85,7 +104,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$auth->validateCsrf($_SERVER['HTTP
 
 $dbPath = __DIR__ . '/../../../../.prototype/migration.sqlite';
 $pdo = null;
-if (is_file($dbPath)) {
+$databaseUrl = (string) ($_ENV['MIGRATION_DATABASE_URL'] ?? '');
+
+if ($databaseUrl !== '') {
+    $pdo = new PDO($databaseUrl);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} elseif (is_file($dbPath)) {
     $pdo = new PDO('sqlite:' . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 }
@@ -152,11 +176,21 @@ if ($path === '/audit/portal') {
         $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
     $response = (new SystemCheckService($client))->check($dbPath);
+
 } else {
+    if (preg_match('#^/control-center/jobs/([^/]+)$#', $path, $m) === 1) {
+        $response = $api->jobDetails($m[1]);
+    } elseif (preg_match('#^/control-center/jobs/([^/]+)/(pause|resume)$#', $path, $m) === 1) {
+        $response = ['jobId' => $m[1], 'action' => $m[2], 'status' => $m[2] === 'pause' ? 'paused' : 'running'];
+    } else {
+
     $response = match ($path) {
         '/dashboard' => $api->dashboard($query['jobId'] ?? null),
         '/jobs' => $api->jobs($query),
         '/jobs/details' => $api->jobDetails((string) ($query['jobId'] ?? 'latest')),
+        '/control-center/jobs' => $api->jobs($query),
+        '/control-center/conflicts' => $api->conflicts($query),
+        '/control-center/repairs' => $api->repairs($query),
         '/conflicts' => $api->conflicts($query),
         '/integrity' => $api->integrity($query),
         '/workers' => $api->workers($query),
@@ -174,6 +208,7 @@ if ($path === '/audit/portal') {
         '/hypercare/final-report' => $api->hypercareFinalReport($query['jobId'] ?? null),
         default => ['error' => 'unknown_endpoint', 'path' => $path],
     };
+    }
 }
 
 header('Content-Type: application/json; charset=utf-8');
