@@ -23,6 +23,11 @@ final class RiskEngine
         $orphanAttachmentReferences = (int) ($linkage['orphan_attachment_references'] ?? 0);
         $diskObjectsWithoutContext = (int) ($linkage['disk_objects_without_attached_context'] ?? 0);
         $attachmentTypeCount = count((array) ($linkage['attachment_type_distribution'] ?? []));
+        $ownershipMetrics = (array) ($profile['permissions'] ?? []);
+        $filesOwnedByInactive = (int) ($ownershipMetrics['files_owned_by_inactive_users'] ?? 0);
+        $tasksOwnedByInactive = (int) ($ownershipMetrics['tasks_owned_by_inactive_users'] ?? 0);
+        $aclInvalidEntries = (int) ($ownershipMetrics['disk_acl_invalid_entries'] ?? 0);
+        $inactiveShare = (int) round(($filesOwnedByInactive / $filesTotal) * 100);
 
         if ($tasks > 200000) {
             $score += 4;
