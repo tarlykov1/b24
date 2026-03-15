@@ -20,6 +20,19 @@ use MigrationModule\Application\Plan\MigrationPlanningService;
 use MigrationModule\Application\Readiness\ProductionReadinessChecklistService;
 use MigrationModule\Application\Reconciliation\PostMigrationReconciliationService;
 use MigrationModule\Application\Reconciliation\ReconciliationEngineService;
+use MigrationModule\Application\Hypercare\AdoptionAnalyticsEngine;
+use MigrationModule\Application\Hypercare\ArchiveManager;
+use MigrationModule\Application\Hypercare\FinalReportGenerator;
+use MigrationModule\Application\Hypercare\HypercareMonitor;
+use MigrationModule\Application\Hypercare\LateWriteDetector;
+use MigrationModule\Application\Hypercare\LateWriteReconciler;
+use MigrationModule\Application\Hypercare\MigrationSuccessScorer;
+use MigrationModule\Application\Hypercare\OptimizationAdvisor;
+use MigrationModule\Application\Hypercare\PerformanceRegressionAnalyzer;
+use MigrationModule\Application\Hypercare\PostMigrationIntegrityScanner;
+use MigrationModule\Application\Hypercare\ReconciliationEngine;
+use MigrationModule\Application\Hypercare\BusinessFlowValidator;
+use MigrationModule\Application\Hypercare\UXTelemetryCollector;
 use MigrationModule\Application\Report\CertificationReportService;
 use MigrationModule\Application\Report\FinalReportService;
 use MigrationModule\Application\Rollback\RollbackService;
@@ -276,6 +289,87 @@ final class MigrationCommands
     public function exportReports(array $payload, string $dir = 'reports'): array
     {
         return $this->reportService->writeBundle($payload, $dir);
+    }
+
+
+    /** @param array<string,float|int> $signals */
+    public function hypercareStart(string $jobId, array $signals = []): array
+    {
+        $monitor = new HypercareMonitor();
+
+        return ['window' => $monitor->start($jobId), 'health' => $monitor->evaluate($signals)];
+    }
+
+    /** @param array<string,list<array<string,mixed>>> $source @param array<string,list<array<string,mixed>>> $target */
+    public function hypercareScan(array $source, array $target): array
+    {
+        return (new PostMigrationIntegrityScanner())->scan($source, $target);
+    }
+
+    /** @param list<array<string,mixed>> $issues */
+    public function hypercareReconcile(array $issues): array
+    {
+        return (new ReconciliationEngine())->reconcile($issues);
+    }
+
+    /** @param list<array<string,mixed>> $changes @param array<string,string> $windows */
+    public function detectLateWrites(array $changes, array $windows): array
+    {
+        return (new LateWriteDetector())->detect($changes, $windows);
+    }
+
+    /** @param list<array<string,mixed>> $lateWrites @param array<string,array<string,mixed>> $targetState */
+    public function reconcileLateWrites(array $lateWrites, array $targetState): array
+    {
+        return (new LateWriteReconciler())->reconcile($lateWrites, $targetState);
+    }
+
+    /** @param array<string,int|float> $signals @param array<string,int|float> $baseline */
+    public function adoptionAnalytics(array $signals, array $baseline): array
+    {
+        return (new AdoptionAnalyticsEngine())->analyze($signals, $baseline);
+    }
+
+    /** @param list<array<string,mixed>> $flows */
+    public function validateBusinessFlows(array $flows): array
+    {
+        return (new BusinessFlowValidator())->validate($flows);
+    }
+
+    /** @param array<string,float|int> $pre @param array<string,float|int> $post */
+    public function performanceRegression(array $pre, array $post): array
+    {
+        return (new PerformanceRegressionAnalyzer())->analyze($pre, $post);
+    }
+
+    /** @param list<array<string,mixed>> $regressions */
+    public function optimizationRecommend(array $regressions): array
+    {
+        return ['recommendations' => (new OptimizationAdvisor())->recommend($regressions)];
+    }
+
+    /** @param list<array<string,mixed>> $events */
+    public function uxTelemetry(array $events): array
+    {
+        return (new UXTelemetryCollector())->aggregate($events);
+    }
+
+    /** @param array<string,float> $scores */
+    public function successScore(array $scores): array
+    {
+        return (new MigrationSuccessScorer())->score($scores);
+    }
+
+    /** @param array<string,mixed> $report */
+    public function hypercareReport(array $report, string $dir = 'reports/hypercare'): array
+    {
+        return (new FinalReportGenerator())->generate($report, $dir);
+    }
+
+    /** @param array<string,mixed> $artifacts */
+    public function hypercareArchive(array $artifacts, string $dir = 'reports/archive'): array
+    {
+        return (new ArchiveManager())->archive($artifacts, $dir);
     }
 
     /** @param array<string, array<int, array<string, mixed>>> $source @param array<string, array<int, array<string, mixed>>> $target @param array<string,mixed> $context */

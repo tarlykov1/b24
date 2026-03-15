@@ -82,6 +82,15 @@ if (is_file(__DIR__ . '/../../../../.audit/migration_profile.json')) {
 <p>No audit profile yet. Run <code>php bin/migration-module audit:run</code>.</p>
 <?php endif; ?>
 
+<h3>Hypercare Command Center</h3>
+<ul>
+  <li><a href="api.php/hypercare/status">System health</a></li>
+  <li><a href="api.php/hypercare/integrity-report">Data integrity</a></li>
+  <li><a href="api.php/hypercare/adoption">Adoption analytics</a></li>
+  <li><a href="api.php/hypercare/performance">Performance regressions</a></li>
+  <li><a href="api.php/hypercare/final-report">Final migration report</a></li>
+</ul>
+
 <h3>Runtime controls</h3>
 <p>Кнопки API: <code>resume</code>, <code>retry failed</code>, <code>skip failed</code> доступны через <code>/jobs/action</code> с typed confirmation.</p>
 <p><a href="api.php/system:check">system:check</a> | <a href="api.php/health">health</a> | <a href="api.php/ready">ready</a></p>
