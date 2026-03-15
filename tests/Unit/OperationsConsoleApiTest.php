@@ -59,4 +59,17 @@ final class OperationsConsoleApiTest extends TestCase
         self::assertArrayHasKey('timeline', $details);
         self::assertArrayHasKey('syncStatus', $details);
     }
+
+    public function testCutoverCommandCenterContract(): void
+    {
+        $api = new OperationsConsoleApi(null);
+        $dto = $api->cutoverCommandCenter('job-77');
+
+        self::assertSame('job-77', $dto['jobId']);
+        self::assertArrayHasKey('readiness', $dto);
+        self::assertArrayHasKey('stateMachineState', $dto);
+        self::assertArrayHasKey('deltaSync', $dto);
+        self::assertArrayHasKey('rollbackPanel', $dto);
+    }
+
 }

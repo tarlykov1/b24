@@ -6,6 +6,20 @@ declare(strict_types=1);
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Application\Readiness\SystemCheckService;
+use MigrationModule\Application\GoLive\CommunicationTemplateEngine;
+use MigrationModule\Application\GoLive\CutoverAuditTrail;
+use MigrationModule\Application\GoLive\CutoverPlanService;
+use MigrationModule\Application\GoLive\CutoverRehearsalEngine;
+use MigrationModule\Application\GoLive\FinalDeltaSyncOrchestrator;
+use MigrationModule\Application\GoLive\FreezePolicyManager;
+use MigrationModule\Application\GoLive\GoLiveOrchestrator;
+use MigrationModule\Application\GoLive\GoLiveReadinessEngine;
+use MigrationModule\Application\GoLive\GoLiveStateMachine;
+use MigrationModule\Application\GoLive\PreflightCheckRunner;
+use MigrationModule\Application\GoLive\RollbackCoordinator;
+use MigrationModule\Application\GoLive\RunbookGenerator;
+use MigrationModule\Application\GoLive\SmokeTestRunner;
+use MigrationModule\Application\GoLive\WindowRecommendationService;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
@@ -137,7 +151,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'cutover:plan', 'cutover:readiness', 'cutover:preflight', 'cutover:delta', 'cutover:rehearsal', 'cutover:runbook', 'cutover:state-graph', 'cutover:comm', 'cutover:window', 'cutover:orchestrate', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>']]);
     }
 
     if ($command === 'validate') {
@@ -145,6 +159,116 @@ try {
     }
 
     $storage->initSchema();
+
+    if (str_starts_with($command, 'cutover:')) {
+        $goLivePlan = new CutoverPlanService();
+        $readiness = new GoLiveReadinessEngine();
+        $freeze = new FreezePolicyManager();
+        $delta = new FinalDeltaSyncOrchestrator();
+        $rehearsal = new CutoverRehearsalEngine();
+        $preflight = new PreflightCheckRunner();
+        $stateMachine = new GoLiveStateMachine();
+        $smoke = new SmokeTestRunner();
+        $rollback = new RollbackCoordinator();
+        $runbook = new RunbookGenerator();
+        $comm = new CommunicationTemplateEngine();
+        $window = new WindowRecommendationService();
+        $audit = new CutoverAuditTrail();
+
+        if ($command === 'cutover:plan') {
+            $payload = [
+                'environmentPair' => ['source' => 'bitrix24-prod', 'target' => 'bitrix24-new'],
+                'migrationScope' => ['job' => 'wave-3', 'strategy' => 'department-by-department'],
+                'window' => ['start' => '2026-04-19T22:00:00+03:00', 'freezeStart' => '2026-04-19T21:40:00+03:00'],
+                'businessConstraints' => ['maxAllowedDowntimeMin' => 45, 'mustKeepOnline' => ['telephony']],
+                'operatorRoles' => ['approver', 'migration_operator', 'infra_operator', 'business_owner', 'rollback_approver'],
+                'readinessThresholds' => ['minScore' => 75],
+                'communicationChecklist' => ['T-7 days', 'T-1 day', 'freeze-start'],
+            ];
+            out($goLivePlan->create('cp-default', $payload, 'cli-operator'));
+        }
+
+        if ($command === 'cutover:readiness') {
+            out($readiness->assess([
+                'completedMigrationWaves' => 3,
+                'requiredMigrationWaves' => 3,
+                'remainingQueueSize' => 82,
+                'unresolvedIntegrityIssues' => 1,
+                'unresolvedMappingConflicts' => 0,
+                'workerHealth' => 0.91,
+                'lastDryRunOk' => true,
+                'lastVerificationOk' => true,
+                'deltaSyncDurationEstimateMin' => 30,
+                'maxAllowedDowntimeMin' => 45,
+                'sourceLoadEstimate' => 0.66,
+                'sourceLoadThreshold' => 0.75,
+            ]));
+        }
+
+        if ($command === 'cutover:preflight') {
+            out($preflight->evaluate([
+                ['name' => 'source_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
+                ['name' => 'target_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
+                ['name' => 'backup_confirmed', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
+                ['name' => 'source_activity_below_threshold', 'severity' => 'warning', 'result' => false, 'message' => 'high but understood'],
+            ]));
+        }
+
+        if ($command === 'cutover:delta') {
+            out($delta->run('dry_run_delta_estimation', [
+                'sourceQpsLimit' => 60,
+                'workerCount' => 10,
+                'changes' => [
+                    ['entityFamily' => 'users', 'count' => 120, 'created' => 4, 'updated' => 116],
+                    ['entityFamily' => 'crm', 'count' => 420, 'created' => 33, 'updated' => 370, 'deleted' => 17],
+                    ['entityFamily' => 'files', 'count' => 150, 'updated' => 120, 'archived' => 30],
+                ],
+            ]));
+        }
+
+        if ($command === 'cutover:rehearsal') {
+            out($rehearsal->simulate(['entityVolume' => 55000, 'avgWorkerThroughput' => 170, 'workers' => 12, 'errorRate' => 0.03, 'dependencyPenalty' => 1.2, 'windowHours' => 6]));
+        }
+
+        if ($command === 'cutover:runbook') {
+            out($runbook->generate(['currentVersion' => 3, 'goal' => 'Weekend production cutover', 'scope' => ['crm', 'tasks', 'files'], 'operatorRoles' => ['approver', 'migration_operator', 'infra_operator']]));
+        }
+
+        if ($command === 'cutover:state-graph') {
+            out($stateMachine->graph());
+        }
+
+        if ($command === 'cutover:comm') {
+            out(['message' => $comm->render('go_live_started', ['window' => '22:00-02:00', 'expected_downtime' => '45m', 'affected_modules' => 'CRM, Tasks', 'support_contact' => 'ops@example.com', 'business_owner' => 'Sales Ops Lead', 'next_update_time' => '22:30'])]);
+        }
+
+        if ($command === 'cutover:window') {
+            out($window->recommend([
+                ['day' => 'Fri', 'hour' => 23, 'activity' => 22],
+                ['day' => 'Sat', 'hour' => 1, 'activity' => 7],
+                ['day' => 'Sat', 'hour' => 3, 'activity' => 5],
+                ['day' => 'Sun', 'hour' => 2, 'activity' => 4],
+                ['day' => 'Mon', 'hour' => 10, 'activity' => 88],
+            ], 35, 50));
+        }
+
+        if ($command === 'cutover:orchestrate') {
+            $orch = new GoLiveOrchestrator($stateMachine, $readiness, $preflight, $delta, $smoke, $rollback, $audit);
+            out($orch->run('cli-operator', ['completedMigrationWaves' => 3, 'requiredMigrationWaves' => 3, 'workerHealth' => 0.93, 'lastDryRunOk' => true, 'lastVerificationOk' => true], [
+                ['name' => 'source_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
+                ['name' => 'backup_confirmed', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
+            ], [
+                'sourceQpsLimit' => 55,
+                'workerCount' => 10,
+                'targetWritesAfterSwitch' => 1300,
+                'changes' => [['entityFamily' => 'users', 'count' => 30, 'updated' => 30], ['entityFamily' => 'crm', 'count' => 90, 'created' => 10, 'updated' => 80]],
+            ], [
+                ['name' => 'login', 'severity' => 'critical', 'pass' => true],
+                ['name' => 'crm_open', 'severity' => 'major', 'pass' => true],
+                ['name' => 'files_open', 'severity' => 'minor', 'pass' => false],
+            ]));
+        }
+    }
 
     if (str_starts_with($command, 'simulate')) {
         $input = new SimulationInput(

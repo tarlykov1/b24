@@ -47,3 +47,23 @@ export interface JobDetailsDto {
   queues: Record<string, number>;
   syncStatus: { mode: string; lagSec: number; checkpoint: string };
 }
+
+export interface CutoverCommandCenterDto {
+  jobId: string;
+  phase: string;
+  stateMachineState: string;
+  etaMin: number;
+  readiness: {
+    readinessScore: number;
+    recommendation: string;
+    hardBlockers: string[];
+    softBlockers: string[];
+    warnings: string[];
+  };
+  approvals: Array<{ role: string; status: string }>;
+  freeze: { status: string; mode: string; exceptions: number };
+  deltaSync: { status: string; progress: number; etaMin: number };
+  smoke: { status: string; criticalPassRate: number };
+  rollbackPanel: { possible: boolean; risk: string; strategy: string };
+  runbookTracker: Array<{ minute: string; step: string; status: string }>;
+}

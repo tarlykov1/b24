@@ -5,7 +5,7 @@ import { fetchJson, openStream, postAction } from '../api/client';
 import { DataTable } from '../components/DataTable';
 import { MetricCard } from '../components/MetricCard';
 import { useConsoleStore } from '../store/useConsoleStore';
-import type { DashboardDto, JobDetailsDto, JobDto, Paged } from '../types/contracts';
+import type { CutoverCommandCenterDto, DashboardDto, JobDetailsDto, JobDto, Paged } from '../types/contracts';
 
 function useApi<T>(path: string) {
   return useQuery({ queryKey: [path], queryFn: () => fetchJson<T>(path), refetchInterval: 7000 });
@@ -163,4 +163,32 @@ export function PolicySimulatorPage() {
 export function IncidentReviewPage() {
   const { data } = useApi<{ items: Array<{ timestamp: string; actionType: string; correlationId: string; traceId: string; actorId: string }> }>('/audit/search');
   return <section><h2>Incident Review</h2><p>Timeline links operator action ↔ backend decision ↔ runtime traces.</p><DataTable columns={['timestamp', 'action', 'actor', 'correlation', 'trace']} rows={(data?.items ?? []).map((i: { timestamp: string; actionType: string; actorId: string; correlationId: string; traceId: string }) => [i.timestamp, i.actionType, i.actorId, i.correlationId, i.traceId])} /></section>;
+}
+
+
+export function CutoverCommandCenterPage() {
+  const { selectedJobId } = useConsoleStore();
+  const { data } = useApi<CutoverCommandCenterDto>(`/cutover?jobId=${selectedJobId ?? 'latest'}`);
+
+  return <section>
+    <h2>Cutover Command Center</h2>
+    <div className="metric-grid">
+      <MetricCard title="state" value={data?.stateMachineState ?? '-'} />
+      <MetricCard title="readiness" value={data?.readiness.readinessScore ?? 0} />
+      <MetricCard title="recommendation" value={data?.readiness.recommendation ?? '-'} />
+      <MetricCard title="cutover ETA (min)" value={data?.etaMin ?? 0} />
+      <MetricCard title="freeze" value={data?.freeze.status ?? '-'} />
+      <MetricCard title="delta ETA" value={data?.deltaSync.etaMin ?? 0} />
+    </div>
+    <h3>Blockers / warnings</h3>
+    <DataTable columns={['type', 'value']} rows={[
+      ['hard blockers', (data?.readiness.hardBlockers ?? []).join(', ') || '-'],
+      ['soft blockers', (data?.readiness.softBlockers ?? []).join(', ') || '-'],
+      ['warnings', (data?.readiness.warnings ?? []).join(', ') || '-'],
+    ]} />
+    <h3>Approvals</h3>
+    <DataTable columns={['role', 'status']} rows={(data?.approvals ?? []).map((a) => [a.role, a.status])} />
+    <h3>Minute-by-minute runbook tracker</h3>
+    <DataTable columns={['minute', 'step', 'status']} rows={(data?.runbookTracker ?? []).map((s) => [s.minute, s.step, s.status])} />
+  </section>;
 }
