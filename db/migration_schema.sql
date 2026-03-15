@@ -265,3 +265,185 @@ CREATE TABLE IF NOT EXISTS migration_target_change_markers (
     UNIQUE KEY uq_target_change (job_id, entity_type, target_id),
     CONSTRAINT fk_target_change_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Cutover Planning & Go-Live Orchestrator
+CREATE TABLE IF NOT EXISTS cutover_plan (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NULL,
+    source_environment VARCHAR(128) NOT NULL,
+    target_environment VARCHAR(128) NOT NULL,
+    strategy VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'draft',
+    current_version INT NOT NULL DEFAULT 1,
+    planned_window_start DATETIME NULL,
+    freeze_start DATETIME NULL,
+    switch_point DATETIME NULL,
+    max_allowed_downtime_min INT NOT NULL DEFAULT 60,
+    created_by VARCHAR(128) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_cutover_plan (plan_id),
+    KEY idx_cutover_plan_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_plan_version (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    version_no INT NOT NULL,
+    payload_json JSON NOT NULL,
+    checksum VARCHAR(128) NOT NULL,
+    changed_by VARCHAR(128) NOT NULL,
+    change_reason VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_cutover_plan_version (plan_id, version_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_approval (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    role VARCHAR(64) NOT NULL,
+    actor_id VARCHAR(128) NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    note VARCHAR(255) NULL,
+    approved_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_cutover_approval_plan (plan_id, role, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_phase_run (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    phase VARCHAR(64) NOT NULL,
+    state VARCHAR(64) NOT NULL,
+    started_at DATETIME NOT NULL,
+    finished_at DATETIME NULL,
+    timeout_at DATETIME NULL,
+    meta_json JSON NULL,
+    PRIMARY KEY (id),
+    KEY idx_cutover_phase_plan (plan_id, phase, state)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_event_log (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    actor_id VARCHAR(128) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    payload_json JSON NULL,
+    prev_hash VARCHAR(128) NOT NULL,
+    event_hash VARCHAR(128) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_cutover_event_plan (plan_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_readiness_snapshot (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    score INT NOT NULL,
+    recommendation VARCHAR(64) NOT NULL,
+    blockers_json JSON NULL,
+    warnings_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_cutover_readiness_plan (plan_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_blocker (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    blocker_type VARCHAR(64) NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'open',
+    details_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_freeze_exception (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    actor_id VARCHAR(128) NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    payload_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_preflight_result (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    checks_json JSON NOT NULL,
+    override_actor_id VARCHAR(128) NULL,
+    override_reason VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_smoke_test_result (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    checks_json JSON NOT NULL,
+    decision VARCHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_stabilization_issue (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    issue_type VARCHAR(64) NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'open',
+    impact_score INT NOT NULL DEFAULT 0,
+    details_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_rollback_run (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    rollback_type VARCHAR(64) NOT NULL,
+    possibility VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    details_json JSON NULL,
+    started_at DATETIME NOT NULL,
+    finished_at DATETIME NULL,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_runbook (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    version_no INT NOT NULL,
+    format VARCHAR(16) NOT NULL,
+    content LONGTEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_cutover_runbook_plan (plan_id, version_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_comm_template (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    template_key VARCHAR(64) NOT NULL,
+    locale VARCHAR(8) NOT NULL DEFAULT 'en',
+    body TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_cutover_template_locale (template_key, locale)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cutover_window_recommendation (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    plan_id VARCHAR(64) NOT NULL,
+    recommendation_json JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

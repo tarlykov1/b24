@@ -152,6 +152,7 @@ if ($path === '/audit/portal') {
         '/diff' => $api->diff($query),
         '/replay-preview' => $api->replayPreview($query),
         '/system-health' => $api->systemHealth($query),
+        '/cutover' => $api->cutoverCommandCenter((string) ($query['jobId'] ?? 'latest')),
         default => ['error' => 'unknown_endpoint', 'path' => $path],
     };
 }
