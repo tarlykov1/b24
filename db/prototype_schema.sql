@@ -112,3 +112,10 @@ CREATE TABLE IF NOT EXISTS estimator_calibration_profiles (
   coefficients_json TEXT NOT NULL,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+
+CREATE TABLE IF NOT EXISTS distributed_control_plane (
+  job_id TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

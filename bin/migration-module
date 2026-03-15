@@ -6,6 +6,8 @@ declare(strict_types=1);
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Application\Readiness\SystemCheckService;
+use MigrationModule\Application\Execution\DistributedWorkerControlPlane;
+use MigrationModule\Application\Throttling\AdaptiveRateLimiter;
 use MigrationModule\Application\GoLive\CommunicationTemplateEngine;
 use MigrationModule\Application\GoLive\CutoverAuditTrail;
 use MigrationModule\Application\GoLive\CutoverPlanService;
@@ -66,7 +68,9 @@ function out(array $payload, int $code = 0): never {
 }
 
 $command = $argv[1] ?? 'help';
-$configPath = $command === 'migration' ? ($argv[5] ?? 'migration.config.yml') : ($argv[2] ?? 'migration.config.yml');
+$configPath = str_starts_with($command, 'migration:workers:')
+    ? 'migration.config.yml'
+    : ($command === 'migration' ? ($argv[5] ?? 'migration.config.yml') : ($argv[2] ?? 'migration.config.yml'));
 
 $audits = [
     'audit:portal' => 'portal',
@@ -151,7 +155,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive']]);
+        out(['commands' => ['validate', 'plan', 'dry-run', 'execute', 'pause', 'resume', 'verify', 'verify-only', 'report', 'status', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
     }
 
     if ($command === 'validate') {
@@ -335,6 +339,34 @@ try {
             $scenario = $builder->buildCandidates($input)[0];
             $run = $engine->run($input, $scenario);
             out(['json' => $reportBuilder->toJson($run), 'markdown' => $reportBuilder->toMarkdown($run)]);
+        }
+    }
+
+    if (str_starts_with($command, 'migration:workers:')) {
+        $limiter = new AdaptiveRateLimiter((string) ($config['throttling']['profile'] ?? 'safe'));
+        $controlPlane = new DistributedWorkerControlPlane($storage, $limiter);
+        $workerJobId = $argv[2] ?? 'job-workers-default';
+
+        switch ($command) {
+            case 'migration:workers:init':
+                $queues = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[3] ?? 'users,tasks,crm,files')))));
+                $workerIds = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[4] ?? 'worker-1,worker-2')))));
+                out($controlPlane->bootstrap($workerJobId, $queues, $workerIds));
+            case 'migration:workers:status':
+                out($controlPlane->status($workerJobId));
+            case 'migration:workers:pause':
+                out($controlPlane->pause($workerJobId, (string) ($argv[3] ?? 'operator_request')));
+            case 'migration:workers:resume':
+                out($controlPlane->resume($workerJobId));
+            case 'migration:workers:retry':
+                out($controlPlane->retryQueue($workerJobId, (string) ($argv[3] ?? 'stage_1_users')));
+            case 'migration:workers:heartbeat':
+                $workerId = (string) ($argv[3] ?? 'worker-1');
+                $signal = strtolower((string) ($argv[4] ?? 'ok'));
+                $statusCode = (int) ($argv[5] ?? 0);
+                out($controlPlane->heartbeat($workerJobId, $workerId, $signal !== 'fail', $statusCode));
+            default:
+                out(['error' => 'Unknown workers command', 'command' => $command], 1);
         }
     }
 

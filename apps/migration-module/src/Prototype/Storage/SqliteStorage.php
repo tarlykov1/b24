@@ -123,6 +123,29 @@ final class SqliteStorage
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'source_id' => $sourceId, 'issue' => $issue]);
     }
 
+
+
+    /** @param array<string,mixed> $state */
+    public function saveDistributedControlPlaneState(string $jobId, array $state): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO distributed_control_plane(job_id, state_json, updated_at) VALUES(:job_id,:state_json,CURRENT_TIMESTAMP)');
+        $stmt->execute(['job_id' => $jobId, 'state_json' => (string) json_encode($state, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function distributedControlPlaneState(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT state_json FROM distributed_control_plane WHERE job_id=:job_id LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+        if ($raw === false || !is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {

@@ -71,6 +71,9 @@ final class MigrationRepository
     /** @var array<string,string> */
     private array $highWaterMarks = [];
 
+    /** @var array<string,array<string,mixed>> */
+    private array $distributedStates = [];
+
     public function beginJob(string $mode): string
     {
         $jobId = sprintf('job-%s', bin2hex(random_bytes(4)));
@@ -265,6 +268,18 @@ final class MigrationRepository
     public function highWaterMark(string $entityType): ?string
     {
         return $this->highWaterMarks[$entityType] ?? null;
+    }
+
+    /** @param array<string,mixed> $state */
+    public function saveDistributedState(string $jobId, array $state): void
+    {
+        $this->distributedStates[$jobId] = $state;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function distributedState(string $jobId): ?array
+    {
+        return $this->distributedStates[$jobId] ?? null;
     }
 
     public function setJobStatus(string $jobId, string $status): void
