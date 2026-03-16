@@ -416,3 +416,93 @@ CREATE TABLE IF NOT EXISTS migration_archive (
     PRIMARY KEY (id),
     KEY idx_migration_archive_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS hypercare_issues (
+    issue_id VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id VARCHAR(128) NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    description TEXT NOT NULL,
+    source_reference JSON NULL,
+    target_reference JSON NULL,
+    detected_at DATETIME NOT NULL,
+    repair_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    PRIMARY KEY (issue_id),
+    KEY idx_hypercare_issue_entity (entity_type, severity),
+    KEY idx_hypercare_issue_repair (repair_status, detected_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS adoption_metrics (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    metric_name VARCHAR(64) NOT NULL,
+    metric_value DECIMAL(12,4) NOT NULL,
+    measured_at DATETIME NOT NULL,
+    payload_json JSON NULL,
+    PRIMARY KEY (id),
+    KEY idx_adoption_metrics_name (metric_name, measured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS anomalies (
+    anomaly_id VARCHAR(64) NOT NULL,
+    anomaly_type VARCHAR(64) NOT NULL,
+    severity ENUM('info', 'warning', 'critical') NOT NULL,
+    description TEXT NOT NULL,
+    detected_at DATETIME NOT NULL,
+    payload_json JSON NULL,
+    PRIMARY KEY (anomaly_id),
+    KEY idx_anomalies_type (anomaly_type, severity)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS performance_metrics (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    metric_name VARCHAR(64) NOT NULL,
+    metric_value DECIMAL(12,4) NOT NULL,
+    threshold_value DECIMAL(12,4) NULL,
+    severity VARCHAR(16) NOT NULL DEFAULT 'info',
+    measured_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_performance_metrics_name (metric_name, measured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS repair_actions (
+    action_id VARCHAR(64) NOT NULL,
+    issue_id VARCHAR(64) NOT NULL,
+    action_type VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    dry_run TINYINT(1) NOT NULL DEFAULT 1,
+    executed_at DATETIME NOT NULL,
+    PRIMARY KEY (action_id),
+    KEY idx_repair_actions_issue (issue_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS adoption_risk_reports (
+    report_id VARCHAR(64) NOT NULL,
+    department VARCHAR(128) NOT NULL,
+    summary TEXT NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    generated_at DATETIME NOT NULL,
+    payload_json JSON NULL,
+    PRIMARY KEY (report_id),
+    KEY idx_adoption_risk_department (department, severity)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS optimization_recommendations (
+    recommendation_id VARCHAR(64) NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    description TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    payload_json JSON NULL,
+    PRIMARY KEY (recommendation_id),
+    KEY idx_optimization_recommendations_domain (domain, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS hypercare_logs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    log_type VARCHAR(64) NOT NULL,
+    severity VARCHAR(16) NOT NULL DEFAULT 'info',
+    message TEXT NOT NULL,
+    payload_json JSON NULL,
+    logged_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_hypercare_logs_type (log_type, logged_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
