@@ -63,6 +63,14 @@ use MigrationModule\Simulation\Scenario\ScenarioBuilder;
 use MigrationModule\Reconciliation\ReconciliationEngine;
 use MigrationModule\Delta\DeltaSyncEngine as RuntimeDeltaSyncEngine;
 use MigrationModule\Cutover\CutoverReadinessAnalyzer;
+use MigrationModule\Hypercare\AdoptionAnalyticsEngine as PostMigrationAdoptionAnalyticsEngine;
+use MigrationModule\Hypercare\AdoptionRiskEngine;
+use MigrationModule\Hypercare\HypercareDashboard;
+use MigrationModule\Hypercare\HypercareMonitor as PostMigrationHypercareMonitor;
+use MigrationModule\Hypercare\HypercareScheduler;
+use MigrationModule\Hypercare\IntegrityRepairEngine;
+use MigrationModule\Hypercare\OptimizationEngine;
+use MigrationModule\Hypercare\PerformanceMonitor;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -88,7 +96,7 @@ function out(array $payload, int $code = 0): never {
 }
 
 $command = $argv[1] ?? 'help';
-$configPath = str_starts_with($command, 'migration:workers:') || in_array($command, ['create-job', 'help', 'validate', 'config:validate'], true)
+$configPath = str_starts_with($command, 'migration:workers:') || in_array($command, ['create-job', 'help', 'validate', 'config:validate', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true)
     ? 'migration.config.yml'
     : ($command === 'migration'
         ? ((isset($argv[5]) && str_ends_with((string) $argv[5], '.yml')) ? (string) $argv[5] : 'migration.config.yml')
@@ -199,7 +207,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
+        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
     }
 
     if ($command === 'validate') {
@@ -402,7 +410,7 @@ try {
     }
 
     $jobId = $argv[3] ?? null;
-    if ($jobId === null && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'system:check'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
+    if ($jobId === null && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'system:check', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
         out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' <config> <job_id>'], 1);
     }
 
@@ -867,6 +875,94 @@ try {
             out(['command' => $command, 'status' => 'generated', 'formats' => ['pdf', 'json', 'html', 'docx']]);
         case 'migration:hypercare:archive':
             out(['command' => $command, 'status' => 'archived', 'scope' => ['migration plans', 'entity maps', 'logs', 'diff reports', 'integrity scans', 'cutover events', 'runbooks']]);
+
+        case 'hypercare:start':
+            $durationDays = (int) ($argv[2] ?? 14);
+            $scheduler = new HypercareScheduler();
+            out([
+                'command' => $command,
+                'status' => 'started',
+                'started_at' => (new DateTimeImmutable('now'))->format(DATE_ATOM),
+                'policy' => $scheduler->policy($durationDays),
+            ]);
+        case 'hypercare:status':
+            $startedAt = (string) ($argv[2] ?? (new DateTimeImmutable('-1 day'))->format(DATE_ATOM));
+            $duration = (int) ($argv[3] ?? 14);
+            out((new HypercareScheduler())->status($startedAt, $duration));
+        case 'hypercare:scan':
+            $source = [
+                'users' => [['id' => 'u1'], ['id' => 'u2']],
+                'contacts' => [['id' => 'c1']],
+                'deals' => [['id' => 'd1', 'contact_id' => 'c-missing']],
+                'files' => [['id' => 'f1', 'disk_object_id' => 'do1']],
+            ];
+            $target = [
+                'users' => [['id' => 'u1']],
+                'contacts' => [['id' => 'c1']],
+                'deals' => [['id' => 'd1', 'contact_id' => 'c-missing']],
+                'files' => [['id' => 'f1', 'disk_object_id' => 'do2']],
+            ];
+            $monitor = new PostMigrationHypercareMonitor();
+            $performance = (new PerformanceMonitor())->monitor([
+                'rest_latency_ms' => 1200,
+                'db_query_latency_ms' => 300,
+                'file_download_latency_ms' => 1900,
+                'worker_queue_delay_ms' => 800,
+                'api_rate_limit_utilization_pct' => 72,
+            ]);
+            $dashboard = (new HypercareDashboard())->build(
+                ['data_integrity_score' => 0.86, 'adoption_score' => 0.79, 'system_performance_score' => 0.88, 'error_rate' => 0.03],
+                ['active_users' => [18, 22, 25], 'task_activity' => [30, 35, 40], 'crm_operations' => [100, 105, 98], 'api_latency' => [800, 950, 1200], 'error_rates' => [0.02, 0.02, 0.03]],
+                ['entity_problems' => ['deals' => 1, 'users' => 1], 'departments_affected' => ['Sales'], 'severity_distribution' => ['critical' => 1, 'warning' => 2]],
+                ['high_usage_departments' => ['Support'], 'low_usage_departments' => ['Sales'], 'inactive_users' => ['u2']],
+            );
+            out([
+                'command' => $command,
+                'integrity' => $monitor->scan($source, $target),
+                'performance' => $performance,
+                'dashboard' => $dashboard,
+            ]);
+        case 'hypercare:repair':
+            $dryRun = (($argv[2] ?? '--dry-run') !== '--execute');
+            $issues = [[
+                'issue_id' => 'hc_issue_demo_1',
+                'entity_type' => 'deals',
+                'description' => 'Broken reference: deal contact not found.',
+            ]];
+            out((new IntegrityRepairEngine())->repair($issues, $dryRun));
+        case 'hypercare:adoption':
+            $old = [
+                'daily_active_users' => 110,
+                'active_users' => ['u1', 'u2', 'u3', 'u4'],
+            ];
+            $new = [
+                'daily_active_users' => 82,
+                'weekly_active_users' => 140,
+                'login_frequency' => 1.3,
+                'task_activity' => 320,
+                'crm_activity' => 210,
+                'file_access' => 170,
+                'feature_usage' => ['crm' => 210, 'tasks' => 320, 'groups' => 30, 'calendar' => 70, 'disk' => 170, 'smart_processes' => 22, 'automation' => 45],
+                'active_users' => ['u1', 'u3'],
+                'all_users' => ['u1', 'u2', 'u3', 'u4', 'u5'],
+                'department_activity' => [
+                    'Sales' => ['crm_usage_drop_pct' => 35.0, 'task_activity_drop_pct' => 20.0],
+                    'Marketing' => ['crm_usage_drop_pct' => 10.0, 'task_activity_drop_pct' => 50.0],
+                ],
+            ];
+            $analytics = (new PostMigrationAdoptionAnalyticsEngine())->analyze($old, $new);
+            $risk = (new AdoptionRiskEngine())->analyze($new['department_activity']);
+            out(array_merge($analytics, $risk));
+        case 'hypercare:optimize':
+            $signals = [
+                'unused_pipelines' => 2,
+                'duplicated_crm_fields' => 3,
+                'task_overload_users' => 6,
+                'inactive_groups' => 4,
+                'duplicate_files' => 120,
+                'unused_storage_mb' => 1024,
+            ];
+            out((new OptimizationEngine())->analyze($signals));
         default:
             out(['error' => 'Unknown command', 'command' => $command], 1);
     }
