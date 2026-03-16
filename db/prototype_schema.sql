@@ -239,3 +239,183 @@ CREATE TABLE IF NOT EXISTS db_verify_results (
   result_json TEXT NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS migration_jobs (
+  job_id TEXT PRIMARY KEY,
+  plan_id TEXT,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS migration_plans (
+  plan_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  plan_hash TEXT NOT NULL,
+  config_hash TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS execution_batches (
+  batch_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  stable_order INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS execution_steps (
+  step_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  batch_id TEXT,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  reserved_target_id TEXT,
+  actual_target_id TEXT,
+  operation_type TEXT NOT NULL,
+  payload_hash TEXT,
+  status TEXT NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  verification_status TEXT,
+  error_class TEXT,
+  error_code TEXT,
+  diagnostic_blob TEXT,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS id_reservations (
+  plan_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  requested_target_id TEXT NOT NULL,
+  reserved_target_id TEXT NOT NULL,
+  policy TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(plan_id, entity_type, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS relation_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id TEXT NOT NULL,
+  relation_key TEXT NOT NULL,
+  owner_entity_type TEXT NOT NULL,
+  owner_source_id TEXT NOT NULL,
+  target_entity_type TEXT NOT NULL,
+  target_source_id TEXT NOT NULL,
+  target_resolved_id TEXT,
+  status TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(plan_id, relation_key)
+);
+
+CREATE TABLE IF NOT EXISTS file_transfer_map (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id TEXT NOT NULL,
+  source_file_id TEXT,
+  source_path TEXT NOT NULL,
+  source_checksum TEXT,
+  source_size INTEGER,
+  target_file_id TEXT,
+  target_path TEXT,
+  target_checksum TEXT,
+  target_size INTEGER,
+  relation_key TEXT,
+  status TEXT NOT NULL,
+  resume_token TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS verification_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  entity_type TEXT,
+  source_id TEXT,
+  level INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  details_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS failure_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  plan_id TEXT,
+  phase TEXT,
+  batch_id TEXT,
+  entity_type TEXT,
+  source_id TEXT,
+  classification TEXT NOT NULL,
+  error_code TEXT,
+  diagnostic_blob TEXT,
+  retryable INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS checkpoint_state (
+  job_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  cursor TEXT,
+  payload_json TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(job_id, plan_id, phase)
+);
+
+CREATE TABLE IF NOT EXISTS replay_guard (
+  idempotency_key TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS run_locks (
+  lock_key TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  plan_id TEXT,
+  owner TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS source_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  plan_id TEXT,
+  snapshot_type TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS job_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  plan_id TEXT,
+  metric_key TEXT NOT NULL,
+  metric_value REAL NOT NULL,
+  tags_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

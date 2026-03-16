@@ -1,4 +1,5 @@
 profile: balanced
+execution_mode: execute
 rate_limit:
   source_rpm: 35
   target_rpm: 40
@@ -10,8 +11,32 @@ retry_policy:
   base_delay_ms: 200
   max_delay_ms: 2000
 parallel_workers: 2
+runtime:
+  max_requests_per_second: 10
+id_preservation_policy: preserve_if_possible
+verification_level: 3
+file_transfer_policy: staged_resume
+cutoff_policy: strict
+throttling_policy: conservative
+maintenance_window_policy: business_hours_safe
 storage:
   path: .prototype/migration.sqlite
+source_db:
+  dsn: ''
+  user: ''
+  password: ''
+target_db:
+  dsn: ''
+  user: ''
+  password: ''
+source_filesystem_root: ''
+target_filesystem_root: ''
+source_rest:
+  url: ''
+  token: ''
+target_rest:
+  url: ''
+  token: ''
 user_policy:
   cutoff_date: 2024-01-01T00:00:00+00:00
   inactive_strategy: transfer_tasks_to_system_user

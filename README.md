@@ -38,6 +38,18 @@ Verify/report/status
 
 Дополнительные компоненты consistency существуют как PHP-сервисы (`SnapshotConsistencyService`, `DeltaSyncEngine`, `ConflictDetectionEngine` и др.), но сейчас они **не подключены к основному CLI entrypoint как отдельные команды**.
 
+## Deterministic execution engine (новый слой)
+
+В прототип добавлен детерминированный execution engine с:
+
+- стабильным `plan_id`/`plan_hash`;
+- dependency-aware графом и стабильным батчингом;
+- строгим state store (`migration_plans`, `execution_steps`, `id_reservations`, `replay_guard`, `checkpoint_state` и др.);
+- checkpoint/resume/retry/reconcile семантикой;
+- replay-protection и идемпотентностью write-операций.
+
+См. `docs/deterministic-execution-engine.md`.
+
 ## Что реально работает
 
 ### Реализовано
