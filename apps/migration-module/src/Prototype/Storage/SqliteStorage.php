@@ -292,6 +292,121 @@ final class SqliteStorage
         return ['totals' => $totals, 'actions' => $byAction, 'cursors' => $cursors];
     }
 
+    public function saveSchemaSnapshot(string $jobId, string $schemaVersion, string $runtimeMode, array $snapshot): void
+    {
+        $this->assertJobExists($jobId);
+        $stmt = $this->pdo->prepare('INSERT INTO schema_snapshots(job_id, schema_version, runtime_mode, snapshot_json) VALUES(:job_id,:schema_version,:runtime_mode,:snapshot_json)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'schema_version' => $schemaVersion,
+            'runtime_mode' => $runtimeMode,
+            'snapshot_json' => (string) json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestSchemaSnapshot(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT snapshot_json FROM schema_snapshots WHERE job_id=:job_id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    public function saveEntityGraph(string $jobId, array $graph): void
+    {
+        $this->assertJobExists($jobId);
+        $stmt = $this->pdo->prepare('INSERT INTO entity_graph(job_id, graph_json) VALUES(:job_id,:graph_json)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'graph_json' => (string) json_encode($graph, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function entityGraph(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT graph_json FROM entity_graph WHERE job_id=:job_id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /** @param array<string,mixed> $boundaries */
+    public function saveExtractProgress(string $jobId, string $entityType, string $tableName, string $strategy, int $batchSize, int $rowsRead, array $boundaries): void
+    {
+        $this->assertJobExists($jobId);
+        $stmt = $this->pdo->prepare('INSERT INTO extract_progress(job_id, entity_type, table_name, strategy, batch_size, rows_read, boundaries_json) VALUES(:job_id,:entity_type,:table_name,:strategy,:batch_size,:rows_read,:boundaries_json)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'table_name' => $tableName,
+            'strategy' => $strategy,
+            'batch_size' => $batchSize,
+            'rows_read' => $rowsRead,
+            'boundaries_json' => (string) json_encode($boundaries, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    public function saveCursor(string $jobId, string $entityType, string $tableName, string $strategy, ?string $lastProcessedId, ?string $lastProcessedTimestamp, ?string $batchStart, ?string $batchEnd): void
+    {
+        $this->assertJobExists($jobId);
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO cursors(job_id, entity_type, table_name, strategy, last_processed_id, last_processed_timestamp, batch_start, batch_end, updated_at) VALUES(:job_id,:entity_type,:table_name,:strategy,:last_processed_id,:last_processed_timestamp,:batch_start,:batch_end,CURRENT_TIMESTAMP)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'table_name' => $tableName,
+            'strategy' => $strategy,
+            'last_processed_id' => $lastProcessedId,
+            'last_processed_timestamp' => $lastProcessedTimestamp,
+            'batch_start' => $batchStart,
+            'batch_end' => $batchEnd,
+        ]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function cursor(string $jobId, string $entityType, string $tableName): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM cursors WHERE job_id=:job_id AND entity_type=:entity_type AND table_name=:table_name LIMIT 1');
+        $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'table_name' => $tableName]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function cursors(string $jobId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM cursors WHERE job_id=:job_id ORDER BY entity_type, table_name');
+        $stmt->execute(['job_id' => $jobId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function saveDbVerifyResult(string $jobId, string $verifyMode, array $result): void
+    {
+        $this->assertJobExists($jobId);
+        $stmt = $this->pdo->prepare('INSERT INTO db_verify_results(job_id, verify_mode, result_json) VALUES(:job_id,:verify_mode,:result_json)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'verify_mode' => $verifyMode,
+            'result_json' => (string) json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {

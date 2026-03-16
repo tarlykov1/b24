@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace MigrationModule\Prototype\Adapter;
 
-interface TargetAdapterInterface
-{
-    /** @param array<string,mixed> $entity */
-    public function upsert(string $entityType, array $entity, bool $dryRun): array;
+use MigrationModule\Prototype\Adapter\Target\ApplyAdapter;
+use MigrationModule\Prototype\Adapter\Target\RestTargetAdapter;
 
-    public function exists(string $entityType, string $targetId): bool;
+interface TargetAdapterInterface extends RestTargetAdapter, ApplyAdapter
+{
 }

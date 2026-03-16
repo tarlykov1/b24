@@ -30,4 +30,9 @@ final class StubTargetAdapter implements TargetAdapterInterface
     {
         return isset($this->target[$entityType][$targetId]);
     }
+
+    public function apply(string $entityType, array $payload): array
+    {
+        return $this->upsert($entityType, $payload, false);
+    }
 }

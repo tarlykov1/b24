@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace MigrationModule\Prototype\Adapter;
 
-interface SourceAdapterInterface
-{
-    /** @return array<int,array<string,mixed>> */
-    public function fetch(string $entityType, int $offset, int $limit): array;
+use MigrationModule\Prototype\Adapter\Source\RestSourceAdapter;
 
-    /** @return list<string> */
-    public function entityTypes(): array;
+interface SourceAdapterInterface extends RestSourceAdapter
+{
 }
