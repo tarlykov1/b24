@@ -407,10 +407,143 @@ final class SqliteStorage
     }
 
 
+    
+
+    public function saveMigrationPlan(string $jobId, string $planId, string $planHash, string $configHash, array $plan): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO migration_jobs(job_id, plan_id, mode, status, updated_at) VALUES(:job_id,:plan_id,:mode,:status,CURRENT_TIMESTAMP)')
+            ->execute(['job_id' => $jobId, 'plan_id' => $planId, 'mode' => 'deterministic', 'status' => 'planned']);
+
+        $this->pdo->prepare('INSERT OR REPLACE INTO migration_plans(plan_id, job_id, plan_hash, config_hash, plan_json, created_at) VALUES(:plan_id,:job_id,:plan_hash,:config_hash,:plan_json,CURRENT_TIMESTAMP)')
+            ->execute([
+                'plan_id' => $planId,
+                'job_id' => $jobId,
+                'plan_hash' => $planHash,
+                'config_hash' => $configHash,
+                'plan_json' => (string) json_encode($plan, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+    }
+
+    public function latestPlan(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT plan_json FROM migration_plans WHERE job_id=:job_id ORDER BY created_at DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    public function saveExecutionBatch(string $jobId, string $planId, string $batchId, string $phase, string $entityType, int $stableOrder, string $status): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO execution_batches(batch_id, job_id, plan_id, phase, entity_type, stable_order, status, updated_at) VALUES(:batch_id,:job_id,:plan_id,:phase,:entity_type,:stable_order,:status,CURRENT_TIMESTAMP)')
+            ->execute([
+                'batch_id' => $batchId,
+                'job_id' => $jobId,
+                'plan_id' => $planId,
+                'phase' => $phase,
+                'entity_type' => $entityType,
+                'stable_order' => $stableOrder,
+                'status' => $status,
+            ]);
+    }
+
+    public function saveExecutionStep(array $record): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO execution_steps(step_id, job_id, plan_id, phase, batch_id, entity_type, source_id, reserved_target_id, actual_target_id, operation_type, payload_hash, status, attempt_count, verification_status, error_class, error_code, diagnostic_blob, started_at, finished_at) VALUES(:step_id,:job_id,:plan_id,:phase,:batch_id,:entity_type,:source_id,:reserved_target_id,:actual_target_id,:operation_type,:payload_hash,:status,:attempt_count,:verification_status,:error_class,:error_code,:diagnostic_blob,:started_at,:finished_at)')
+            ->execute($record);
+    }
+
+    public function saveFailureEvent(array $record): void
+    {
+        $this->pdo->prepare('INSERT INTO failure_events(job_id, plan_id, phase, batch_id, entity_type, source_id, classification, error_code, diagnostic_blob, retryable) VALUES(:job_id,:plan_id,:phase,:batch_id,:entity_type,:source_id,:classification,:error_code,:diagnostic_blob,:retryable)')
+            ->execute($record);
+    }
+
+    public function saveIdReservation(array $record): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO id_reservations(plan_id, entity_type, source_id, requested_target_id, reserved_target_id, policy, reason, updated_at) VALUES(:plan_id,:entity_type,:source_id,:requested_target_id,:reserved_target_id,:policy,:reason,CURRENT_TIMESTAMP)')
+            ->execute($record);
+    }
+
+    public function findIdReservation(string $planId, string $entityType, string $sourceId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM id_reservations WHERE plan_id=:plan_id AND entity_type=:entity_type AND source_id=:source_id LIMIT 1');
+        $stmt->execute(['plan_id' => $planId, 'entity_type' => $entityType, 'source_id' => $sourceId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    public function saveRelationMap(string $planId, string $relationKey, string $ownerEntityType, string $ownerSourceId, string $targetEntityType, string $targetSourceId, ?string $targetResolvedId, string $status, ?string $reason): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO relation_map(plan_id, relation_key, owner_entity_type, owner_source_id, target_entity_type, target_source_id, target_resolved_id, status, reason) VALUES(:plan_id,:relation_key,:owner_entity_type,:owner_source_id,:target_entity_type,:target_source_id,:target_resolved_id,:status,:reason)')
+            ->execute([
+                'plan_id' => $planId,
+                'relation_key' => $relationKey,
+                'owner_entity_type' => $ownerEntityType,
+                'owner_source_id' => $ownerSourceId,
+                'target_entity_type' => $targetEntityType,
+                'target_source_id' => $targetSourceId,
+                'target_resolved_id' => $targetResolvedId,
+                'status' => $status,
+                'reason' => $reason,
+            ]);
+    }
+
+    public function saveFileTransferMap(array $record): void
+    {
+        $this->pdo->prepare('INSERT INTO file_transfer_map(plan_id, source_file_id, source_path, source_checksum, source_size, target_file_id, target_path, target_checksum, target_size, relation_key, status, resume_token, updated_at) VALUES(:plan_id,:source_file_id,:source_path,:source_checksum,:source_size,:target_file_id,:target_path,:target_checksum,:target_size,:relation_key,:status,:resume_token,CURRENT_TIMESTAMP)')
+            ->execute($record);
+    }
+
+    public function saveCheckpointState(string $jobId, string $planId, string $phase, ?string $cursor, array $payload): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO checkpoint_state(job_id, plan_id, phase, cursor, payload_json, updated_at) VALUES(:job_id,:plan_id,:phase,:cursor,:payload_json,CURRENT_TIMESTAMP)')
+            ->execute(['job_id' => $jobId, 'plan_id' => $planId, 'phase' => $phase, 'cursor' => $cursor, 'payload_json' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    public function listCheckpointState(string $jobId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM checkpoint_state WHERE job_id=:job_id ORDER BY phase');
+        $stmt->execute(['job_id' => $jobId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function saveReplayGuard(string $idempotencyKey, string $jobId, string $planId, string $phase, string $entityType, string $sourceId, string $payloadHash, string $status): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO replay_guard(idempotency_key, job_id, plan_id, phase, entity_type, source_id, payload_hash, status) VALUES(:idempotency_key,:job_id,:plan_id,:phase,:entity_type,:source_id,:payload_hash,:status)')
+            ->execute([
+                'idempotency_key' => $idempotencyKey,
+                'job_id' => $jobId,
+                'plan_id' => $planId,
+                'phase' => $phase,
+                'entity_type' => $entityType,
+                'source_id' => $sourceId,
+                'payload_hash' => $payloadHash,
+                'status' => $status,
+            ]);
+    }
+
+    public function replayGuardStatus(string $idempotencyKey): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT status FROM replay_guard WHERE idempotency_key=:idempotency_key LIMIT 1');
+        $stmt->execute(['idempotency_key' => $idempotencyKey]);
+        $status = $stmt->fetchColumn();
+
+        return is_string($status) ? $status : null;
+    }
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {
-        $tables = ['queue', 'entity_map', 'diff', 'integrity_issues', 'logs'];
+        $tables = ['queue', 'entity_map', 'diff', 'integrity_issues', 'logs', 'execution_batches', 'execution_steps', 'failure_events', 'verification_results'];
         $summary = [];
         foreach ($tables as $table) {
             $stmt = $this->pdo->prepare("SELECT COUNT(*) as c FROM {$table} WHERE job_id=:job_id");

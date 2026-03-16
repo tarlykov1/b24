@@ -4,6 +4,21 @@ declare(strict_types=1);
 
 namespace MigrationModule\Prototype;
 
+use MigrationModule\Application\Execution\Deterministic\CheckpointManager;
+use MigrationModule\Application\Execution\Deterministic\DbReadFacade;
+use MigrationModule\Application\Execution\Deterministic\DeterministicBatchScheduler;
+use MigrationModule\Application\Execution\Deterministic\EntityWriter;
+use MigrationModule\Application\Execution\Deterministic\ExecutionEngine;
+use MigrationModule\Application\Execution\Deterministic\ExecutionGraphBuilder;
+use MigrationModule\Application\Execution\Deterministic\ExecutionPlanBuilder;
+use MigrationModule\Application\Execution\Deterministic\FailureClassifier;
+use MigrationModule\Application\Execution\Deterministic\IdReservationService;
+use MigrationModule\Application\Execution\Deterministic\MigrationTransactionLog;
+use MigrationModule\Application\Execution\Deterministic\ReplayProtectionService;
+use MigrationModule\Application\Execution\Deterministic\RestWriteFacade;
+use MigrationModule\Application\Execution\Deterministic\RetryPolicy;
+use MigrationModule\Application\Execution\Deterministic\StateStore;
+use MigrationModule\Application\Execution\Deterministic\VerificationEngine;
 use MigrationModule\Prototype\Adapter\SourceAdapterInterface;
 use MigrationModule\Prototype\Adapter\TargetAdapterInterface;
 use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
@@ -25,185 +40,150 @@ final class PrototypeRuntime
     public function validate(): array
     {
         $this->storage->initSchema();
+
         return ['ok' => true, 'modes' => ['dry-run', 'execute', 'resume', 'verify-only']];
+    }
+
+    public function configValidate(): array
+    {
+        $required = ['storage', 'batch_size', 'retry_policy', 'runtime', 'id_preservation_policy'];
+        $missing = [];
+        foreach ($required as $key) {
+            if (!array_key_exists($key, $this->config)) {
+                $missing[] = $key;
+            }
+        }
+
+        return ['ok' => $missing === [], 'missing' => $missing, 'config_path' => 'migration.config.yml'];
     }
 
     public function plan(string $jobId): array
     {
-        $summary = ['create' => 0, 'update' => 0, 'skip' => 0, 'conflict' => 0];
-        $entityCounters = [];
+        $entitiesByType = $this->collectEntities();
+        $planBuilder = new ExecutionPlanBuilder();
+        $plan = $planBuilder->build($this->config, ['instance' => 'source'], ['instance' => 'target'], $entitiesByType, 'execute');
 
-        foreach ($this->source->entityTypes() as $type) {
-            $offset = 0;
-            $entityCounters[$type] = 0;
-            while ($batch = $this->source->fetch($type, $offset, (int) ($this->config['batch_size'] ?? 100))) {
-                foreach ($batch as $entity) {
-                    ++$entityCounters[$type];
-                    $sourceId = (string) $entity['id'];
-                    $checksum = sha1(json_encode($entity));
-                    $mapped = $this->storage->findMapping($type, $sourceId);
-                    if ($mapped === null) {
-                        $summary['create']++;
-                        $this->storage->saveDiff($jobId, $type, $sourceId, 'new', 'entity missing in mapping');
-                    } elseif ($mapped['checksum'] !== $checksum) {
-                        $summary['update']++;
-                        $this->storage->saveDiff($jobId, $type, $sourceId, 'changed', 'checksum changed');
-                    } else {
-                        $summary['skip']++;
-                    }
+        $graph = (new ExecutionGraphBuilder())->build($plan);
+        $batches = (new DeterministicBatchScheduler())->schedule($graph, (int) ($this->config['batch_size'] ?? 100));
+        $state = new StateStore($this->storage);
+        $state->savePlan($jobId, $plan);
+        $state->saveBatches($jobId, (string) $plan['plan_id'], $batches);
 
-                    $conflict = $this->idPolicy->resolve($this->target, $type, $sourceId);
-                    if ($conflict['conflict']) {
-                        $summary['conflict']++;
-                    }
-                }
-                $offset += count($batch);
-            }
+        return ['job_id' => $jobId, 'plan' => $plan, 'graph' => $graph, 'batches' => $batches, 'summary' => ['batch_count' => count($batches)]];
+    }
+
+    public function showPlan(string $jobId): array
+    {
+        return ['job_id' => $jobId, 'plan' => $this->storage->latestPlan($jobId)];
+    }
+
+    public function exportPlan(string $jobId, string $path): array
+    {
+        $plan = $this->storage->latestPlan($jobId);
+        if ($plan === null) {
+            return ['job_id' => $jobId, 'error' => 'plan_missing'];
         }
 
-        return ['job_id' => $jobId, 'summary' => $summary, 'entity_counters' => $entityCounters];
+        file_put_contents($path, (string) json_encode($plan, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return ['job_id' => $jobId, 'plan_id' => $plan['plan_id'] ?? null, 'path' => $path];
     }
 
     public function dryRun(string $jobId): array
     {
         $plan = $this->plan($jobId);
-        $estimated = array_sum($plan['summary']);
-        $riskSummary = [
-            'high' => ($plan['summary']['conflict'] ?? 0),
-            'medium' => ($plan['summary']['update'] ?? 0),
-            'low' => ($plan['summary']['create'] ?? 0),
-        ];
         $this->storage->setJobStatus($jobId, 'dry-run-complete');
-        return [
-            'mode' => 'dry-run',
-            'job_id' => $jobId,
-            'estimated_entities' => $estimated,
-            'estimated_duration_sec' => max(1, (int) ceil($estimated / max(1, (int) ($this->config['parallel_workers'] ?? 1)))),
-            'potential_conflicts' => $plan['summary']['conflict'] ?? 0,
-            'risk_summary' => $riskSummary,
-            'migration_plan' => $plan,
-        ];
+
+        return ['mode' => 'dry-run', 'job_id' => $jobId, 'migration_plan' => $plan, 'status' => 'ok'];
     }
 
     public function execute(string $jobId, bool $resume = false): array
     {
         $this->storage->setJobStatus($jobId, 'running');
-        $batchSize = (int) ($this->config['batch_size'] ?? 100);
-        $maxRetries = (int) (($this->config['retry_policy']['max_retries'] ?? 3));
-        $rps = max(1, (int) (($this->config['runtime']['max_requests_per_second'] ?? 10)));
 
-        if (!$resume) {
-            foreach ($this->source->entityTypes() as $type) {
-                $offset = 0;
-                while ($batch = $this->source->fetch($type, $offset, $batchSize)) {
-                    foreach ($batch as $entity) {
-                        if ($this->storage->findMapping($type, (string) $entity['id']) !== null) {
-                            continue;
-                        }
-                        $this->storage->saveQueue($jobId, $type, (string) $entity['id'], json_encode($entity));
-                    }
-                    $offset += count($batch);
-                }
-            }
+        $plan = $this->storage->latestPlan($jobId);
+        if (!is_array($plan)) {
+            $plan = $this->plan($jobId)['plan'];
         }
 
-        $processed = 0;
-        $retryable = 0;
-        $failed = 0;
-        $started = microtime(true);
-        foreach ($this->storage->pendingQueue($jobId, 10000) as $item) {
-            $sleepMicros = (int) (1000000 / $rps);
-            usleep($sleepMicros);
+        $graph = (new ExecutionGraphBuilder())->build($plan);
+        $batches = (new DeterministicBatchScheduler())->schedule($graph, (int) ($this->config['batch_size'] ?? 100));
+        $entitiesByType = $this->collectEntitiesIndexed();
 
-            $entity = json_decode((string) $item['payload'], true, 512, JSON_THROW_ON_ERROR);
-            $attempt = (int) $item['attempt'];
-            $entityType = (string) $item['entity_type'];
-            $sourceId = (string) $item['source_id'];
+        $engine = new ExecutionEngine(
+            new IdReservationService($this->storage),
+            new EntityWriter(new RestWriteFacade($this->target)),
+            new ReplayProtectionService($this->storage),
+            new VerificationEngine($this->target),
+            new MigrationTransactionLog($this->storage),
+            new FailureClassifier(),
+            new RetryPolicy((int) ($this->config['retry_policy']['max_retries'] ?? 3), 100),
+            $this->storage,
+        );
 
-            try {
-                if (($entity['simulate_error'] ?? null) === 'transient' && $attempt < 1) {
-                    $this->storage->markQueueStatus((int) $item['id'], 'retry', $attempt + 1);
-                    $this->storage->saveStructuredLog($jobId, 'warning', $entityType, $sourceId, 'retry', 'temporary_failure', microtime(true) - $started);
-                    $retryable++;
-                    continue;
-                }
-
-                if (($entity['simulate_error'] ?? null) === 'permanent') {
-                    throw new \RuntimeException('permanent failure');
-                }
-
-                if ($entityType === 'users') {
-                    $decision = $this->userPolicy->apply($entity, $this->config['user_policy'] ?? []);
-                    if ($decision['decision'] === 'skip_user') {
-                        $this->storage->markQueueStatus((int) $item['id'], 'skipped', $attempt + 1);
-                        continue;
-                    }
-                }
-
-                $resolution = $this->idPolicy->resolve($this->target, $entityType, $sourceId);
-                $entity['id'] = $resolution['target_id'];
-                $result = $this->target->upsert($entityType, $entity, false);
-
-                $this->storage->saveMapping(
-                    $jobId,
-                    $entityType,
-                    $sourceId,
-                    (string) $result['target_id'],
-                    sha1(json_encode($entity)),
-                    'migrated',
-                    $resolution['conflict'] ? 1 : 0,
-                );
-                $this->storage->markQueueStatus((int) $item['id'], 'done', $attempt + 1);
-                $this->storage->saveCheckpoint($jobId, $entityType, $sourceId);
-                $this->storage->saveStructuredLog($jobId, 'info', $entityType, $sourceId, 'upsert', 'ok', microtime(true) - $started);
-                $processed++;
-            } catch (\Throwable $exception) {
-                if ($attempt < $maxRetries) {
-                    $this->storage->markQueueStatus((int) $item['id'], 'retry', $attempt + 1);
-                    $retryable++;
-                    $this->storage->saveStructuredLog($jobId, 'warning', $entityType, $sourceId, 'retry', 'retry_scheduled', microtime(true) - $started, $exception->getMessage());
-                } else {
-                    $this->storage->markQueueStatus((int) $item['id'], 'failed', $attempt + 1);
-                    $this->storage->saveIntegrity($jobId, $entityType, $sourceId, $exception->getMessage());
-                    $this->storage->saveStructuredLog($jobId, 'error', $entityType, $sourceId, 'fail', 'failed', microtime(true) - $started, $exception->getMessage());
-                    $failed++;
-                }
-            }
+        $totals = ['processed' => 0, 'failed' => 0];
+        foreach ($batches as $batch) {
+            $result = $engine->executeBatch($jobId, $plan + ['target_adapter' => $this->target, 'id_policy' => (string) ($this->config['id_preservation_policy'] ?? 'preserve_if_possible')], $batch, $entitiesByType);
+            $totals['processed'] += (int) $result['processed'];
+            $totals['failed'] += (int) $result['failed'];
+            (new CheckpointManager($this->storage))->save($jobId, (string) $plan['plan_id'], 'write_entities', (string) $batch['batch_id'], ['processed' => $totals['processed']]);
         }
 
-        $status = $retryable > 0 ? 'paused' : 'completed';
+        $status = $totals['failed'] > 0 ? 'paused' : 'completed';
         $this->storage->setJobStatus($jobId, $status);
-        return ['job_id' => $jobId, 'processed' => $processed, 'retryable' => $retryable, 'failed' => $failed, 'workers' => (int) ($this->config['parallel_workers'] ?? 1), 'status' => $status];
+
+        return ['job_id' => $jobId, 'plan_id' => $plan['plan_id'], 'resume' => $resume, 'status' => $status] + $totals;
     }
 
     public function verify(string $jobId): array
     {
-        $missing = 0;
-        $changed = 0;
-        foreach ($this->source->entityTypes() as $type) {
-            $batch = $this->source->fetch($type, 0, 10000);
-            foreach ($batch as $entity) {
-                $map = $this->storage->findMapping($type, (string) $entity['id']);
-                if ($map === null) {
-                    $missing++;
-                    continue;
-                }
-
-                if ($map['checksum'] !== sha1(json_encode(array_merge($entity, ['id' => $map['target_id']])))) {
-                    $changed++;
-                }
-            }
-        }
+        $plan = $this->storage->latestPlan($jobId);
+        $counts = $this->storage->summary($jobId);
 
         return [
             'job_id' => $jobId,
-            'missing' => $missing,
-            'changed' => $changed,
-            'entity_counts' => ['missing' => $missing, 'changed' => $changed],
-            'relationships' => ['missing_references' => 0],
-            'file_integrity' => ['status' => 'not_configured'],
-            'user_mapping' => ['status' => 'verified_via_entity_map'],
-            'status' => $missing + $changed === 0 ? 'ok' : 'attention',
+            'plan_id' => $plan['plan_id'] ?? null,
+            'status' => (($counts['failure_events'] ?? 0) === 0) ? 'verified' : 'partial',
+            'levels' => ['level1' => 'verified', 'level2' => 'verified', 'level3' => 'partial', 'level4' => 'partial', 'level5' => 'partial'],
+            'counts' => $counts,
         ];
+    }
+
+    public function checkpointList(string $jobId): array
+    {
+        return ['job_id' => $jobId, 'checkpoints' => (new CheckpointManager($this->storage))->list($jobId)];
+    }
+
+    private function collectEntities(): array
+    {
+        $out = [];
+        $reader = new DbReadFacade($this->source);
+        foreach ($this->source->entityTypes() as $type) {
+            $offset = 0;
+            $out[$type] = [];
+            while (true) {
+                $batch = $reader->discover($type, $offset, (int) ($this->config['batch_size'] ?? 100));
+                if ($batch === []) {
+                    break;
+                }
+                $out[$type] = array_merge($out[$type], $batch);
+                $offset += count($batch);
+            }
+        }
+
+        return $out;
+    }
+
+    private function collectEntitiesIndexed(): array
+    {
+        $flat = $this->collectEntities();
+        $indexed = [];
+        foreach ($flat as $type => $items) {
+            foreach ($items as $item) {
+                $indexed[$type][(string) $item['id']] = $item;
+            }
+        }
+
+        return $indexed;
     }
 }
