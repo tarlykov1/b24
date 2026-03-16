@@ -15,3 +15,14 @@
 - Extended prototype schema with strict execution/state tables for resumable idempotent runs.
 - Extended CLI with `config:validate`, `plan:show`, `plan:export`, `retry`, `reconcile`, `checkpoint:*`, `failures:list`, `files:verify`, `mapping:export`.
 - Added unit/integration coverage for stable hashing/order, ID conflict policy, replay protection, checkpoint transitions and execute→resume semantics.
+
+## 2026 MySQL-first Deployment & Installer Layer
+
+- ✅ Added MySQL platform schema (`db/mysql_platform_schema.sql`) with control-plane/runtime/install/audit/delta/cutover/hypercare tables.
+- ✅ Added migration runner with migration lock, checksum tracking, idempotent apply and status endpoints.
+- ✅ Added install validation engine with hard safety guards (platform schema overlap, source/target identity, unsafe paths, aggressive resources warning).
+- ✅ Added CLI install/database commands: `install:check`, `install:init-db`, `install:generate-config`, `install:validate`, `install:report`, `install:apply`, `config:lint`, `db:migrate`, `db:status`.
+- ✅ Added safe installation wizard UI scaffold (`install.php`) wired to API validation and config generation endpoints.
+- ✅ Added production/safe-lab MySQL-first config templates and co-located deployment examples (systemd + nginx).
+- ✅ Added operator/deployment/troubleshooting/schema documentation for production-focused target-server install.
+- ⚠️ SQLite-backed prototype runtime remains for backward compatibility paths and should be considered non-production.

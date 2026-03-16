@@ -1,0 +1,16 @@
+{
+  "platform": {
+    "app_url": "http://127.0.0.1:8088",
+    "bind": "127.0.0.1:8088",
+    "mysql_dsn": "mysql:host=127.0.0.1;dbname=bitrix_migration_lab;charset=utf8mb4",
+    "mysql_user": "bitrix_migration_lab",
+    "mysql_password": "lab",
+    "install_dir": "/tmp/bitrix-migration",
+    "log_dir": "/tmp/bitrix-migration/logs",
+    "temp_dir": "/tmp/bitrix-migration/tmp"
+  },
+  "source": {"db_dsn": "mysql:host=127.0.0.1;dbname=bitrix_source_lab;charset=utf8mb4"},
+  "target": {"db_dsn": "mysql:host=127.0.0.1;dbname=bitrix_target_lab;charset=utf8mb4", "write_enabled": false},
+  "execution": {"workers": 1, "batch_size": 50},
+  "policy": {"delta_sync": "safe", "conflict_policy": "manual"}
+}

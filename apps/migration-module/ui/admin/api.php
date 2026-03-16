@@ -9,6 +9,8 @@ use MigrationModule\Application\Security\SecurityGovernanceService;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
 use MigrationModule\Infrastructure\Http\AdminAuth;
 use MigrationModule\Infrastructure\Http\OperationsConsoleApi;
+use MigrationModule\Installation\ConfigLintService;
+use MigrationModule\Installation\InstallWizardService;
 
 $vendorAutoload = __DIR__ . '/../../../../vendor/autoload.php';
 if (is_file($vendorAutoload)) {
@@ -94,6 +96,28 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     if ($path === '/ready' && (($response['ok'] ?? false) !== true)) {
         http_response_code(503);
     }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+
+if (str_starts_with($path, '/install/')) {
+    $wizard = new InstallWizardService();
+    $config = is_array($query['config'] ?? null) ? $query['config'] : [];
+
+    if ($path === '/install/check') {
+        $response = $wizard->check($config);
+    } elseif ($path === '/install/validate') {
+        $lint = (new ConfigLintService())->lint($config);
+        $response = ['ok' => $lint['ok'], 'validation' => $lint];
+    } elseif ($path === '/install/generate-config') {
+        $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
+        $response = $wizard->generateConfig($config, $outputPath);
+    } else {
+        $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
+    }
+
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
