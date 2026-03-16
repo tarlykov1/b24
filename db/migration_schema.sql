@@ -506,3 +506,94 @@ CREATE TABLE IF NOT EXISTS hypercare_logs (
     PRIMARY KEY (id),
     KEY idx_hypercare_logs_type (log_type, logged_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sync_state (
+    sync_id VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NULL,
+    direction ENUM('source_to_target','target_to_source') NOT NULL DEFAULT 'source_to_target',
+    last_synced_at DATETIME NULL,
+    last_hash CHAR(64) NULL,
+    source_version VARCHAR(64) NULL,
+    target_version VARCHAR(64) NULL,
+    sync_state VARCHAR(32) NOT NULL DEFAULT 'pending',
+    mode ENUM('event-driven','scheduled-delta','hybrid') NOT NULL DEFAULT 'hybrid',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (sync_id),
+    UNIQUE KEY uq_sync_state_entity (job_id, entity_type, source_id, direction),
+    KEY idx_sync_state_state (job_id, sync_state, updated_at),
+    CONSTRAINT fk_sync_state_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    conflict_id VARCHAR(64) NOT NULL,
+    sync_id VARCHAR(64) NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NULL,
+    conflict_type VARCHAR(64) NOT NULL,
+    resolution_strategy ENUM('source_priority','target_priority','last_write_wins','manual_resolution') NOT NULL DEFAULT 'manual_resolution',
+    conflict_payload JSON NOT NULL,
+    resolution_payload JSON NULL,
+    status ENUM('open','resolved','ignored') NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    PRIMARY KEY (conflict_id),
+    KEY idx_sync_conflicts_status (job_id, status, created_at),
+    CONSTRAINT fk_sync_conflicts_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sync_drift (
+    drift_id VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NULL,
+    target_id VARCHAR(128) NULL,
+    drift_category ENUM('missing_entity','extra_entity','field_mismatch','relation_mismatch','file_mismatch') NOT NULL,
+    severity ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium',
+    drift_payload JSON NOT NULL,
+    status ENUM('open','resolved','ignored') NOT NULL DEFAULT 'open',
+    detected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    PRIMARY KEY (drift_id),
+    KEY idx_sync_drift_status (job_id, status, detected_at),
+    CONSTRAINT fk_sync_drift_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sync_ledger (
+    ledger_id VARCHAR(64) NOT NULL,
+    sync_id VARCHAR(64) NOT NULL,
+    job_id BIGINT UNSIGNED NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_id VARCHAR(128) NULL,
+    action VARCHAR(32) NOT NULL,
+    direction ENUM('source_to_target','target_to_source') NOT NULL,
+    checksum_before CHAR(64) NULL,
+    checksum_after CHAR(64) NULL,
+    metadata_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ledger_id),
+    KEY idx_sync_ledger_job (job_id, entity_type, created_at),
+    CONSTRAINT fk_sync_ledger_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sync_metrics (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id BIGINT UNSIGNED NOT NULL,
+    service_state VARCHAR(32) NOT NULL,
+    sync_operations_total BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    sync_errors_total BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    sync_conflicts_total BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    sync_drift_total BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    replication_lag_seconds BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    queue_backlog BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    sync_health_score DECIMAL(6,4) NOT NULL DEFAULT 1.0000,
+    measured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_sync_metrics_job (job_id, measured_at),
+    CONSTRAINT fk_sync_metrics_job FOREIGN KEY (job_id) REFERENCES migration_job(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -31,6 +31,7 @@ use MigrationModule\Application\Cutover\CutoverRepository;
 use MigrationModule\Application\Cutover\CutoverService;
 use MigrationModule\Application\Cutover\CutoverStateMachine as EnterpriseCutoverStateMachine;
 use MigrationModule\Application\Lifecycle\LifecycleTransitionGuard;
+use MigrationModule\Application\Sync\ContinuousSyncService;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
@@ -264,7 +265,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
+        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration sync:start <job_id>', 'migration sync:stop <job_id>', 'migration sync:status <job_id>', 'migration sync:verify <job_id>', 'migration sync:conflicts <job_id>', 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]', 'migration sync:drift <job_id>', 'migration sync:policy <job_id>', 'migration sync:service <job_id>', 'migration dr:status <job_id>', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
     }
 
     if ($command === 'validate') {
@@ -564,7 +565,10 @@ try {
         }
 
 
-        $parseCliOptions = static function (array $args): array {
+        
+        $continuousSync = new ContinuousSyncService($storage);
+
+$parseCliOptions = static function (array $args): array {
             $opts = [];
             foreach ($args as $arg) {
                 if (!str_starts_with((string) $arg, '--')) {
@@ -868,6 +872,32 @@ try {
                 $targetReader = $targetDbPdo !== null ? new PdoMySqlTargetReadAdapter($targetDbPdo) : null;
                 $verify = new DbVerificationEngine($storage, $targetReader);
                 out($verify->verify($jobForCommand, $mode));
+            case 'sync:start':
+                out($continuousSync->start($jobForCommand, $config));
+            case 'sync:stop':
+                out($continuousSync->stop($jobForCommand));
+            case 'sync:status':
+                out($continuousSync->status($jobForCommand, $config));
+            case 'sync:verify':
+                out($continuousSync->verify($jobForCommand, $allSource(), $allTarget()));
+            case 'sync:conflicts':
+                out(['job_id' => $jobForCommand, 'items' => $storage->listSyncConflicts($jobForCommand), 'policies' => ['source_priority', 'target_priority', 'last_write_wins', 'manual_resolution']]);
+            case 'sync:resolve':
+                $conflictId = (string) ($argv[4] ?? '');
+                $strategy = (string) ($argv[5] ?? 'manual_resolution');
+                if ($conflictId === '') {
+                    out(['error' => 'conflict_id_required', 'usage' => 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]'], 1);
+                }
+                $storage->resolveSyncConflict($conflictId, $strategy, ['operator' => 'cli']);
+                out(['job_id' => $jobForCommand, 'conflict_id' => $conflictId, 'status' => 'resolved', 'strategy' => $strategy]);
+            case 'sync:drift':
+                out(['job_id' => $jobForCommand, 'items' => $storage->listSyncDrift($jobForCommand)]);
+            case 'sync:policy':
+                out(['job_id' => $jobForCommand, 'policy' => $config['sync']['policy'] ?? [], 'filters' => $config['sync']['filters'] ?? [], 'window' => $config['sync']['window'] ?? []]);
+            case 'sync:service':
+                out($continuousSync->serviceTick($jobForCommand));
+            case 'dr:status':
+                out($continuousSync->drStatus($jobForCommand));
             default:
                 out(['error' => 'Unknown migration subcommand', 'subcommand' => $sub], 1);
         }

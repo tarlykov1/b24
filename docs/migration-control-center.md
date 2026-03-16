@@ -86,3 +86,14 @@ Control Center writes additional log levels into `logs.level`:
 - `conflict_resolution`
 - `integrity_repair`
 - `manual_override`
+
+## Continuous Sync Dashboard Extension
+
+The Control Center now includes a planned Sync workspace backed by `sync_*` tables and CLI services:
+
+- **Sync Dashboard**: status, sync mode, direction, worker health, replication lag, queue backlog.
+- **Drift Heatmap**: grouped by `entity_type`, `drift_category`, `severity`.
+- **Conflict Resolution UI**: list/resolve rows from `sync_conflicts`.
+- **Sync Timeline**: render `sync_ledger` chronologically for audit/rollback analysis.
+
+Metrics source: `/metrics/sync` exporter should map counters from `sync_metrics`.

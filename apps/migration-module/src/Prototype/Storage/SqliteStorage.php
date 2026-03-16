@@ -646,6 +646,142 @@ final class SqliteStorage
         return is_string($status) ? $status : null;
     }
 
+    public function upsertSyncState(array $record): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO sync_state(sync_id, job_id, entity_type, source_id, target_id, direction, last_synced_at, last_hash, source_version, target_version, sync_state, mode, updated_at) VALUES(:sync_id,:job_id,:entity_type,:source_id,:target_id,:direction,:last_synced_at,:last_hash,:source_version,:target_version,:sync_state,:mode,CURRENT_TIMESTAMP)')
+            ->execute($record);
+    }
+
+    public function recordSyncConflict(string $conflictId, ?string $syncId, string $jobId, string $entityType, string $sourceId, ?string $targetId, string $conflictType, string $resolutionStrategy, array $payload): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO sync_conflicts(conflict_id, sync_id, job_id, entity_type, source_id, target_id, conflict_type, resolution_strategy, conflict_payload, status, created_at) VALUES(:conflict_id,:sync_id,:job_id,:entity_type,:source_id,:target_id,:conflict_type,:resolution_strategy,:conflict_payload,"open",CURRENT_TIMESTAMP)')
+            ->execute([
+                'conflict_id' => $conflictId,
+                'sync_id' => $syncId,
+                'job_id' => $jobId,
+                'entity_type' => $entityType,
+                'source_id' => $sourceId,
+                'target_id' => $targetId,
+                'conflict_type' => $conflictType,
+                'resolution_strategy' => $resolutionStrategy,
+                'conflict_payload' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+    }
+
+    public function resolveSyncConflict(string $conflictId, string $strategy, array $payload): void
+    {
+        $this->pdo->prepare('UPDATE sync_conflicts SET resolution_strategy=:strategy, resolution_payload=:resolution_payload, status="resolved", resolved_at=CURRENT_TIMESTAMP WHERE conflict_id=:conflict_id')
+            ->execute([
+                'conflict_id' => $conflictId,
+                'strategy' => $strategy,
+                'resolution_payload' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function listSyncConflicts(string $jobId, ?string $status = null): array
+    {
+        $sql = 'SELECT * FROM sync_conflicts WHERE job_id=:job_id';
+        $params = ['job_id' => $jobId];
+        if ($status !== null) {
+            $sql .= ' AND status=:status';
+            $params['status'] = $status;
+        }
+        $sql .= ' ORDER BY created_at DESC';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function recordSyncDrift(string $driftId, string $jobId, string $entityType, ?string $sourceId, ?string $targetId, string $category, string $severity, array $payload): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO sync_drift(drift_id, job_id, entity_type, source_id, target_id, drift_category, severity, drift_payload, status, detected_at) VALUES(:drift_id,:job_id,:entity_type,:source_id,:target_id,:drift_category,:severity,:drift_payload,"open",CURRENT_TIMESTAMP)')
+            ->execute([
+                'drift_id' => $driftId,
+                'job_id' => $jobId,
+                'entity_type' => $entityType,
+                'source_id' => $sourceId,
+                'target_id' => $targetId,
+                'drift_category' => $category,
+                'severity' => $severity,
+                'drift_payload' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function listSyncDrift(string $jobId, ?string $status = null): array
+    {
+        $sql = 'SELECT * FROM sync_drift WHERE job_id=:job_id';
+        $params = ['job_id' => $jobId];
+        if ($status !== null) {
+            $sql .= ' AND status=:status';
+            $params['status'] = $status;
+        }
+        $sql .= ' ORDER BY detected_at DESC';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function appendSyncLedger(array $record): void
+    {
+        $this->pdo->prepare('INSERT OR REPLACE INTO sync_ledger(sync_id, ledger_id, job_id, entity_type, source_id, target_id, action, direction, checksum_before, checksum_after, metadata_json, created_at) VALUES(:sync_id,:ledger_id,:job_id,:entity_type,:source_id,:target_id,:action,:direction,:checksum_before,:checksum_after,:metadata_json,CURRENT_TIMESTAMP)')
+            ->execute($record);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function syncLedger(string $jobId, int $limit = 100): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM sync_ledger WHERE job_id=:job_id ORDER BY created_at DESC LIMIT :limit');
+        $stmt->bindValue(':job_id', $jobId);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** @param array<string,mixed> $metrics */
+    public function recordSyncMetric(string $jobId, array $metrics): void
+    {
+        $row = $this->latestSyncMetric($jobId) ?? [];
+        $defaults = [
+            'service_state' => 'running',
+            'sync_operations_total' => 0,
+            'sync_errors_total' => 0,
+            'sync_conflicts_total' => 0,
+            'sync_drift_total' => 0,
+            'replication_lag_seconds' => 0,
+            'queue_backlog' => 0,
+            'sync_health_score' => 1,
+        ];
+        $payload = array_merge($defaults, $row, $metrics);
+
+        $this->pdo->prepare('INSERT INTO sync_metrics(job_id, service_state, sync_operations_total, sync_errors_total, sync_conflicts_total, sync_drift_total, replication_lag_seconds, queue_backlog, sync_health_score, measured_at) VALUES(:job_id,:service_state,:sync_operations_total,:sync_errors_total,:sync_conflicts_total,:sync_drift_total,:replication_lag_seconds,:queue_backlog,:sync_health_score,CURRENT_TIMESTAMP)')
+            ->execute([
+                'job_id' => $jobId,
+                'service_state' => $payload['service_state'],
+                'sync_operations_total' => (int) $payload['sync_operations_total'],
+                'sync_errors_total' => (int) $payload['sync_errors_total'],
+                'sync_conflicts_total' => (int) $payload['sync_conflicts_total'],
+                'sync_drift_total' => (int) $payload['sync_drift_total'],
+                'replication_lag_seconds' => (int) $payload['replication_lag_seconds'],
+                'queue_backlog' => (int) $payload['queue_backlog'],
+                'sync_health_score' => (float) $payload['sync_health_score'],
+            ]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestSyncMetric(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM sync_metrics WHERE job_id=:job_id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {

@@ -41,3 +41,21 @@ user_policy:
   cutoff_date: 2024-01-01T00:00:00+00:00
   inactive_strategy: transfer_tasks_to_system_user
   system_user_id: system
+sync:
+  mode: hybrid
+  direction: source_to_target
+  window:
+    start: '01:00'
+    end: '05:00'
+    timezone: UTC
+    low_load_days: ['sat', 'sun']
+  policy:
+    users: enabled
+    tasks: enabled
+    crm: enabled
+    files: partial
+    comments: disabled
+    activity_logs: enabled
+  filters:
+    tasks.project: ACTIVE_PROJECTS
+    users.last_active_after: '2024-01-01'
