@@ -60,6 +60,49 @@ final class OperationsConsoleApi
         ];
     }
 
+
+    /** @return array<string,mixed> */
+    public function migrationHealth(?string $jobId = null): array
+    {
+        if ($this->pdo === null) {
+            return ['jobId' => $jobId ?? 'latest', 'health' => ['score' => 0.92, 'workers' => 8, 'queue_depth' => 420, 'retry_rate' => 0.4, 'api_latency_ms' => 210], 'issues' => []];
+        }
+
+        $job = $jobId ?? (string) ($this->pdo->query('SELECT id FROM jobs ORDER BY created_at DESC LIMIT 1')->fetchColumn() ?: 'latest');
+        $pendingStmt = $this->pdo->prepare('SELECT COUNT(*) FROM queue WHERE job_id=:job_id AND status IN ("pending","retry")');
+        $pendingStmt->execute(['job_id' => $job]);
+        $pending = (int) ($pendingStmt->fetchColumn() ?: 0);
+
+        $totalStmt = $this->pdo->prepare('SELECT COUNT(*) FROM queue WHERE job_id=:job_id AND updated_at >= :window');
+        $totalStmt->execute(['job_id' => $job, 'window' => (new DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s')]);
+        $total = (int) ($totalStmt->fetchColumn() ?: 0);
+
+        $retryStmt = $this->pdo->prepare('SELECT COUNT(*) FROM queue WHERE job_id=:job_id AND status="retry" AND updated_at >= :window');
+        $retryStmt->execute(['job_id' => $job, 'window' => (new DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s')]);
+        $retry = (int) ($retryStmt->fetchColumn() ?: 0);
+
+        $rate = $total > 0 ? round(($retry / $total) * 100, 2) : 0.0;
+        $score = max(0.0, 100.0 - ($rate > 3.0 ? 8.0 : 0.0) - ($pending > 400 ? 10.0 : 0.0));
+
+        return [
+            'jobId' => $job,
+            'health' => [
+                'score' => $score,
+                'workers' => 0,
+                'queue_depth' => $pending,
+                'retry_rate' => $rate,
+                'api_latency_ms' => 0,
+            ],
+            'issues' => [
+                'retry_storm' => $rate > 3.0,
+                'queue_stall' => false,
+                'worker_idle' => false,
+                'rest_throttling' => false,
+                'filesystem_bottleneck' => false,
+            ],
+        ];
+    }
+
     /** @return array<string,mixed> */
     public function hypercareStatus(?string $jobId = null): array
     {
