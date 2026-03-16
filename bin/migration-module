@@ -27,6 +27,9 @@ use MigrationModule\Application\GoLive\RollbackCoordinator;
 use MigrationModule\Application\GoLive\RunbookGenerator;
 use MigrationModule\Application\GoLive\SmokeTestRunner;
 use MigrationModule\Application\GoLive\WindowRecommendationService;
+use MigrationModule\Application\Cutover\CutoverRepository;
+use MigrationModule\Application\Cutover\CutoverService;
+use MigrationModule\Application\Cutover\CutoverStateMachine as EnterpriseCutoverStateMachine;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
@@ -196,7 +199,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]']]);
+        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
     }
 
     if ($command === 'validate') {
@@ -214,114 +217,81 @@ try {
         out(['job_id' => $storage->createJob($mode), 'status' => 'created', 'mode' => $mode]);
     }
 
+    
     if (str_starts_with($command, 'cutover:')) {
-        $goLivePlan = new CutoverPlanService();
-        $readiness = new GoLiveReadinessEngine();
-        $freeze = new FreezePolicyManager();
-        $delta = new FinalDeltaSyncOrchestrator();
-        $rehearsal = new CutoverRehearsalEngine();
-        $preflight = new PreflightCheckRunner();
-        $stateMachine = new GoLiveStateMachine();
-        $smoke = new SmokeTestRunner();
-        $rollback = new RollbackCoordinator();
-        $runbook = new RunbookGenerator();
-        $comm = new CommunicationTemplateEngine();
-        $window = new WindowRecommendationService();
-        $audit = new CutoverAuditTrail();
-
-        if ($command === 'cutover:plan') {
-            $payload = [
-                'environmentPair' => ['source' => 'bitrix24-prod', 'target' => 'bitrix24-new'],
-                'migrationScope' => ['job' => 'wave-3', 'strategy' => 'department-by-department'],
-                'window' => ['start' => '2026-04-19T22:00:00+03:00', 'freezeStart' => '2026-04-19T21:40:00+03:00'],
-                'businessConstraints' => ['maxAllowedDowntimeMin' => 45, 'mustKeepOnline' => ['telephony']],
-                'operatorRoles' => ['approver', 'migration_operator', 'infra_operator', 'business_owner', 'rollback_approver'],
-                'readinessThresholds' => ['minScore' => 75],
-                'communicationChecklist' => ['T-7 days', 'T-1 day', 'freeze-start'],
-            ];
-            out($goLivePlan->create('cp-default', $payload, 'cli-operator'));
+        $opts = [];
+        foreach (array_slice($argv, 2) as $arg) {
+            if (!str_starts_with((string) $arg, '--')) {
+                continue;
+            }
+            [$k, $v] = array_pad(explode('=', substr((string) $arg, 2), 2), 2, 'true');
+            $opts[$k] = $v;
         }
 
+        $enterpriseRepo = new CutoverRepository($storage->pdo());
+        $enterpriseSm = new EnterpriseCutoverStateMachine();
+        $enterpriseCutover = new CutoverService($enterpriseRepo, $enterpriseSm);
+        $cutoverId = (string) ($opts['cutover-id'] ?? ('cutover_' . substr(hash('sha256', (string) microtime(true)), 0, 10)));
+        $jobForCutover = (string) ($opts['job-id'] ?? ($argv[2] ?? 'job-default'));
+        $dryRun = isset($opts['dry-run']);
+        $strict = isset($opts['strict']);
+
+        if ($command === 'cutover:window:check') {
+            out($enterpriseCutover->windowCheck($cutoverId, $dryRun));
+        }
+        if ($command === 'cutover:approve') {
+            out($enterpriseCutover->approve($cutoverId, (string) ($opts['scope'] ?? 'migration_operator'), (string) ($opts['approver'] ?? 'cli-operator'), (string) ($opts['comment'] ?? '')));
+        }
+        if ($command === 'cutover:status') {
+            out($enterpriseCutover->status($cutoverId));
+        }
+        if ($command === 'cutover:pause') {
+            out($enterpriseCutover->pause($cutoverId));
+        }
+        if ($command === 'cutover:resume') {
+            out($enterpriseCutover->resume($cutoverId));
+        }
+        if ($command === 'cutover:abort') {
+            out($enterpriseCutover->abort($cutoverId));
+        }
+        if ($command === 'cutover:rollback:prepare') {
+            out($enterpriseCutover->rollbackPrepare($cutoverId));
+        }
+        if ($command === 'cutover:rollback:execute') {
+            out($enterpriseCutover->rollbackExecute($cutoverId));
+        }
+        if ($command === 'cutover:report') {
+            out($enterpriseCutover->report($cutoverId));
+        }
         if ($command === 'cutover:readiness') {
-            out($readiness->assess([
-                'completedMigrationWaves' => 3,
-                'requiredMigrationWaves' => 3,
-                'remainingQueueSize' => 82,
-                'unresolvedIntegrityIssues' => 1,
-                'unresolvedMappingConflicts' => 0,
-                'workerHealth' => 0.91,
-                'lastDryRunOk' => true,
-                'lastVerificationOk' => true,
-                'deltaSyncDurationEstimateMin' => 30,
-                'maxAllowedDowntimeMin' => 45,
-                'sourceLoadEstimate' => 0.66,
-                'sourceLoadThreshold' => 0.75,
+            out($enterpriseCutover->readiness($cutoverId, [
+                'completed_waves' => (int) ($opts['completed-waves'] ?? 3),
+                'required_waves' => (int) ($opts['required-waves'] ?? 3),
+                'residual_delta' => (int) ($opts['residual-delta'] ?? 0),
+                'max_residual_delta' => (int) ($opts['max-residual-delta'] ?? 10),
+                'connectivity_ok' => (($opts['connectivity-ok'] ?? 'true') === 'true'),
+                'rollback_strategy_defined' => (($opts['rollback-strategy-defined'] ?? 'true') === 'true'),
+                'parallel_cutover_active' => (($opts['parallel-cutover-active'] ?? 'false') === 'true'),
             ]));
         }
-
-        if ($command === 'cutover:preflight') {
-            out($preflight->evaluate([
-                ['name' => 'source_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
-                ['name' => 'target_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
-                ['name' => 'backup_confirmed', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
-                ['name' => 'source_activity_below_threshold', 'severity' => 'warning', 'result' => false, 'message' => 'high but understood'],
-            ]));
+        if ($command === 'cutover:go-live') {
+            out($enterpriseCutover->goLive($cutoverId, $dryRun, $strict));
         }
-
-        if ($command === 'cutover:delta') {
-            out($delta->run('dry_run_delta_estimation', [
-                'sourceQpsLimit' => 60,
-                'workerCount' => 10,
-                'changes' => [
-                    ['entityFamily' => 'users', 'count' => 120, 'created' => 4, 'updated' => 116],
-                    ['entityFamily' => 'crm', 'count' => 420, 'created' => 33, 'updated' => 370, 'deleted' => 17],
-                    ['entityFamily' => 'files', 'count' => 150, 'updated' => 120, 'archived' => 30],
+        if ($command === 'cutover:plan') {
+            $policy = [
+                'strict_mode' => $strict,
+                'freeze_mode' => (string) ($opts['freeze-mode'] ?? 'operator_confirmed_manual_freeze'),
+                'max_residual_delta' => (int) ($opts['max-residual-delta'] ?? 10),
+                'cutover_window' => [
+                    'start' => (string) ($opts['window-start'] ?? date(DATE_ATOM, time() - 60)),
+                    'end' => (string) ($opts['window-end'] ?? date(DATE_ATOM, time() + 3600)),
+                    'timezone' => (string) ($opts['timezone'] ?? 'UTC'),
+                    'allow_finish_after_window_end' => (($opts['allow-finish-after-window-end'] ?? 'false') === 'true'),
                 ],
-            ]));
+            ];
+            out($enterpriseCutover->plan($jobForCutover, $cutoverId, $policy, (string) ($opts['operator'] ?? 'cli-operator')));
         }
 
-        if ($command === 'cutover:rehearsal') {
-            out($rehearsal->simulate(['entityVolume' => 55000, 'avgWorkerThroughput' => 170, 'workers' => 12, 'errorRate' => 0.03, 'dependencyPenalty' => 1.2, 'windowHours' => 6]));
-        }
-
-        if ($command === 'cutover:runbook') {
-            out($runbook->generate(['currentVersion' => 3, 'goal' => 'Weekend production cutover', 'scope' => ['crm', 'tasks', 'files'], 'operatorRoles' => ['approver', 'migration_operator', 'infra_operator']]));
-        }
-
-        if ($command === 'cutover:state-graph') {
-            out($stateMachine->graph());
-        }
-
-        if ($command === 'cutover:comm') {
-            out(['message' => $comm->render('go_live_started', ['window' => '22:00-02:00', 'expected_downtime' => '45m', 'affected_modules' => 'CRM, Tasks', 'support_contact' => 'ops@example.com', 'business_owner' => 'Sales Ops Lead', 'next_update_time' => '22:30'])]);
-        }
-
-        if ($command === 'cutover:window') {
-            out($window->recommend([
-                ['day' => 'Fri', 'hour' => 23, 'activity' => 22],
-                ['day' => 'Sat', 'hour' => 1, 'activity' => 7],
-                ['day' => 'Sat', 'hour' => 3, 'activity' => 5],
-                ['day' => 'Sun', 'hour' => 2, 'activity' => 4],
-                ['day' => 'Mon', 'hour' => 10, 'activity' => 88],
-            ], 35, 50));
-        }
-
-        if ($command === 'cutover:orchestrate') {
-            $orch = new GoLiveOrchestrator($stateMachine, $readiness, $preflight, $delta, $smoke, $rollback, $audit);
-            out($orch->run('cli-operator', ['completedMigrationWaves' => 3, 'requiredMigrationWaves' => 3, 'workerHealth' => 0.93, 'lastDryRunOk' => true, 'lastVerificationOk' => true], [
-                ['name' => 'source_reachable', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
-                ['name' => 'backup_confirmed', 'severity' => 'critical', 'result' => true, 'message' => 'ok'],
-            ], [
-                'sourceQpsLimit' => 55,
-                'workerCount' => 10,
-                'targetWritesAfterSwitch' => 1300,
-                'changes' => [['entityFamily' => 'users', 'count' => 30, 'updated' => 30], ['entityFamily' => 'crm', 'count' => 90, 'created' => 10, 'updated' => 80]],
-            ], [
-                ['name' => 'login', 'severity' => 'critical', 'pass' => true],
-                ['name' => 'crm_open', 'severity' => 'major', 'pass' => true],
-                ['name' => 'files_open', 'severity' => 'minor', 'pass' => false],
-            ]));
-        }
     }
 
     if ($command === 'migration' && (($argv[2] ?? '') === 'strategy:generate' || ($argv[2] ?? '') === 'strategy:visualize')) {
