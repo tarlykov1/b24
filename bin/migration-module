@@ -30,6 +30,7 @@ use MigrationModule\Application\GoLive\WindowRecommendationService;
 use MigrationModule\Application\Cutover\CutoverRepository;
 use MigrationModule\Application\Cutover\CutoverService;
 use MigrationModule\Application\Cutover\CutoverStateMachine as EnterpriseCutoverStateMachine;
+use MigrationModule\Application\Lifecycle\LifecycleTransitionGuard;
 use MigrationModule\ControlCenter\Controller\JobController;
 use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
@@ -95,12 +96,68 @@ function out(array $payload, int $code = 0): never {
     exit($code);
 }
 
+/** @return array{options: array<string,string>, positionals: array<int,string>} */
+function parseArgs(array $argv): array
+{
+    $options = [];
+    $positionals = [];
+    foreach ($argv as $index => $arg) {
+        if ($index < 2) {
+            continue;
+        }
+
+        if (!str_starts_with((string) $arg, '--')) {
+            $positionals[] = (string) $arg;
+            continue;
+        }
+
+        [$key, $value] = array_pad(explode('=', substr((string) $arg, 2), 2), 2, '1');
+        $options[$key] = $value;
+    }
+
+    return ['options' => $options, 'positionals' => $positionals];
+}
+
 $command = $argv[1] ?? 'help';
-$configPath = str_starts_with($command, 'migration:workers:') || in_array($command, ['create-job', 'help', 'validate', 'config:validate', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true)
-    ? 'migration.config.yml'
-    : ($command === 'migration'
-        ? ((isset($argv[5]) && str_ends_with((string) $argv[5], '.yml')) ? (string) $argv[5] : 'migration.config.yml')
-        : ($argv[2] ?? 'migration.config.yml'));
+$parsedArgs = parseArgs($argv);
+$options = $parsedArgs['options'];
+$positionals = $parsedArgs['positionals'];
+$warnings = [];
+
+$lifecycleCommands = ['validate', 'create-job', 'dry-run', 'execute', 'resume', 'pause', 'verify', 'report', 'status'];
+$requiresJob = ['dry-run', 'execute', 'resume', 'pause', 'verify', 'report', 'status'];
+$configPath = (string) ($options['config'] ?? 'migration.config.yml');
+$jobId = $options['job-id'] ?? null;
+$outputFormat = (string) ($options['format'] ?? 'json');
+$mode = (string) ($options['mode'] ?? '');
+
+if (in_array($command, $lifecycleCommands, true)) {
+    if ($outputFormat !== 'json' && $outputFormat !== 'text') {
+        out(['error' => 'invalid_argument', 'field' => 'format', 'expected' => ['json', 'text']], 2);
+    }
+
+    if ($mode !== '' && !in_array($mode, ['dry-run', 'execute', 'verify', 'report'], true)) {
+        out(['error' => 'invalid_argument', 'field' => 'mode', 'expected' => ['dry-run', 'execute', 'verify', 'report']], 2);
+    }
+
+    if (isset($options['job-id']) === false && isset($positionals[1]) && $positionals[1] !== '') {
+        $jobId = $positionals[1];
+        $warnings[] = 'Deprecated positional CLI contract used. Please migrate to --job-id=<id>.';
+    }
+
+    if (isset($options['config']) === false && isset($positionals[0]) && str_ends_with($positionals[0], '.yml')) {
+        $configPath = $positionals[0];
+        $warnings[] = 'Deprecated positional CLI contract used. Please migrate to --config=<path>.';
+    }
+
+    if (in_array($command, $requiresJob, true) && (!is_string($jobId) || $jobId === '')) {
+        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' --job-id=<id> [--config=<path>]'], 2);
+    }
+}
+
+if ($warnings !== []) {
+    fwrite(STDERR, '[deprecated_cli] ' . implode(' ', $warnings) . PHP_EOL);
+}
 
 $audits = [
     'audit:portal' => 'portal',
@@ -221,7 +278,7 @@ try {
     $storage->initSchema();
 
     if ($command === 'create-job') {
-        $mode = (string) ($argv[2] ?? 'execute');
+        $mode = (string) ($options['mode'] ?? (($positionals[0] ?? '') !== '' && !str_ends_with((string) ($positionals[0] ?? ''), '.yml') ? $positionals[0] : 'execute'));
         out(['job_id' => $storage->createJob($mode), 'status' => 'created', 'mode' => $mode]);
     }
 
@@ -409,9 +466,8 @@ try {
         }
     }
 
-    $jobId = $argv[3] ?? null;
     if ($jobId === null && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'system:check', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
-        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' <config> <job_id>'], 1);
+        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' --job-id=<id> [--config=<path>]'], 1);
     }
 
     if (in_array($command, ['plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export'], true) && is_string($jobId) && $jobId !== '') {
@@ -817,6 +873,8 @@ try {
         }
     }
 
+    $transitionGuard = new LifecycleTransitionGuard($storage);
+
     switch ($command) {
         case 'plan':
             out($runtime->plan($jobId));
@@ -826,13 +884,22 @@ try {
             $path = (string) ($argv[4] ?? ('.prototype/' . $jobId . '.plan.json'));
             out($runtime->exportPlan($jobId, $path));
         case 'dry-run':
+            if ($mode !== '' && $mode !== 'dry-run') {
+                out(['error' => 'invalid_mode_for_command', 'command' => 'dry-run', 'mode' => $mode, 'expected' => 'dry-run'], 2);
+            }
             out($runtime->dryRun($jobId));
         case 'execute':
+            if ($mode !== '' && $mode !== 'execute') {
+                out(['error' => 'invalid_mode_for_command', 'command' => 'execute', 'mode' => $mode, 'expected' => 'execute'], 2);
+            }
+            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::RUNNING, 'execute');
             out($runtime->execute($jobId, false));
         case 'pause':
+            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::PAUSED, 'pause');
             $storage->setJobStatus($jobId, 'paused');
             out(['job_id' => $jobId, 'status' => 'paused']);
         case 'resume':
+            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::RUNNING, 'resume');
             out($runtime->execute($jobId, true));
         case 'retry':
             out($runtime->execute($jobId, true) + ['mode' => 'retry']);
@@ -840,9 +907,16 @@ try {
             out($runtime->execute($jobId, true) + ['mode' => 'reconcile']);
         case 'verify':
         case 'verify-only':
+            if ($mode !== '' && $mode !== 'verify') {
+                out(['error' => 'invalid_mode_for_command', 'command' => 'verify', 'mode' => $mode, 'expected' => 'verify'], 2);
+            }
+            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::VERIFIED, 'verify');
             out($runtime->verify($jobId));
         case 'report':
         case 'status':
+            if ($command === 'report' && $mode !== '' && $mode !== 'report') {
+                out(['error' => 'invalid_mode_for_command', 'command' => 'report', 'mode' => $mode, 'expected' => 'report'], 2);
+            }
             out(['job_id' => $jobId, 'summary' => $storage->summary($jobId)]);
         case 'checkpoint:list':
         case 'checkpoint:show':

@@ -281,7 +281,7 @@ final class OperationsConsoleApi
             ],
             'roles' => $this->security?->roles() ?? ['operator', 'architect', 'support', 'admin'],
             'defaultRole' => 'operator',
-            'realtime' => ['transport' => 'sse', 'fallback' => 'polling'],
+            'realtime' => ['transport' => 'polling', 'fallback' => 'polling', 'stream_status' => 'not_wired'],
         ];
     }
 
@@ -376,7 +376,7 @@ final class OperationsConsoleApi
      */
     public function conflicts(array $query): array
     {
-        if (($g = $this->ensureDemoMode('conflicts', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('conflicts', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         $limit = max(1, (int) ($query['limit'] ?? 50));
@@ -405,7 +405,7 @@ final class OperationsConsoleApi
      */
     public function integrity(array $query): array
     {
-        if (($g = $this->ensureDemoMode('integrity', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('integrity', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         $limit = max(1, (int) ($query['limit'] ?? 50));
@@ -434,7 +434,7 @@ final class OperationsConsoleApi
      */
     public function workers(array $query): array
     {
-        if (($g = $this->ensureDemoMode('workers', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('workers', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         $items = [];
@@ -538,7 +538,7 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null,x?:string,y?:string} $query @return array<string,mixed> */
     public function heatmap(array $query): array
     {
-        if (($g = $this->ensureDemoMode('heatmap', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('heatmap', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         $x = (string) ($query['x'] ?? 'entityType');
@@ -558,7 +558,7 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function mapping(array $query): array
     {
-        if (($g = $this->ensureDemoMode('mapping', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('mapping', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         return [
@@ -579,7 +579,7 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function diff(array $query): array
     {
-        if (($g = $this->ensureDemoMode('diff', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('diff', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         $items = [];
@@ -600,7 +600,7 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null,mode?:string|null} $query @return array<string,mixed> */
     public function replayPreview(array $query): array
     {
-        if (($g = $this->ensureDemoMode('replay_preview', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('replay_preview', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         return [
@@ -617,7 +617,7 @@ final class OperationsConsoleApi
     /** @param array{jobId?:string|null} $query @return array<string,mixed> */
     public function systemHealth(array $query): array
     {
-        if (($g = $this->ensureDemoMode('system_health', $jobId ?? null)) !== null) {
+        if (($g = $this->ensureDemoMode('system_health', (string) ($query['jobId'] ?? null))) !== null) {
             return $g;
         }
         return [
@@ -645,9 +645,10 @@ final class OperationsConsoleApi
         return [
             'jobId' => $jobId,
             'surface' => $surface,
-            'mode' => $this->demoMode ? 'demo' : 'real',
+            'mode' => $this->demoMode ? 'demo' : 'production',
             'status' => 'not_available',
             'reason' => 'synthetic_telemetry_disabled_in_real_mode',
+            'profile' => $this->demoMode ? 'demo' : 'production',
             'demo_only' => true,
         ];
     }

@@ -45,6 +45,18 @@ $path = preg_replace('#^.*?/api\.php#', '', $path) ?: '/';
 $auth = new AdminAuth();
 $query = array_merge($_GET, $_POST, json_decode((string) file_get_contents('php://input'), true) ?? []);
 
+if ($path === '/stream') {
+    http_response_code(501);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'not_wired',
+        'surface' => 'stream',
+        'status' => 'unsupported',
+        'recommended_transport' => 'polling',
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     $client = null;
     if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
@@ -53,21 +65,29 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     $service = new SystemCheckService($client);
     $response = $service->check(__DIR__ . '/../../../../.prototype/migration.sqlite');
     if ($path === '/metrics') {
-        $metrics = $api = null;
-        $snapshot = [
-            'entities_per_sec' => random_int(25, 300),
-            'retry_rate' => round(random_int(0, 30) / 100, 3),
-            'queue_depth' => random_int(0, 800),
-            'worker_utilization' => round(random_int(30, 98) / 100, 3),
-            'error_rate' => round(random_int(0, 15) / 100, 3),
-        ];
-
         header('Content-Type: text/plain; version=0.0.4');
-        echo "migration_entities_per_sec {$snapshot['entities_per_sec']}\n";
-        echo "migration_retry_rate {$snapshot['retry_rate']}\n";
-        echo "migration_queue_depth {$snapshot['queue_depth']}\n";
-        echo "migration_worker_utilization {$snapshot['worker_utilization']}\n";
-        echo "migration_error_rate {$snapshot['error_rate']}\n";
+        if (!is_file(__DIR__ . '/../../../../.prototype/migration.sqlite')) {
+            echo "migration_metrics_status{status=\"not_available\"} 1\n";
+            exit;
+        }
+
+        $pdoMetrics = new PDO('sqlite:' . __DIR__ . '/../../../../.prototype/migration.sqlite');
+        $pdoMetrics->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $jobs = (int) $pdoMetrics->query('SELECT COUNT(*) FROM jobs')->fetchColumn();
+        $running = (int) $pdoMetrics->query("SELECT COUNT(*) FROM jobs WHERE status='running'")->fetchColumn();
+        $paused = (int) $pdoMetrics->query("SELECT COUNT(*) FROM jobs WHERE status='paused'")->fetchColumn();
+        $steps = (int) $pdoMetrics->query('SELECT COUNT(*) FROM execution_steps')->fetchColumn();
+        $errors = (int) $pdoMetrics->query('SELECT COUNT(*) FROM failure_events')->fetchColumn();
+        $retries = (int) $pdoMetrics->query("SELECT COUNT(*) FROM execution_steps WHERE status='retry'")->fetchColumn();
+        $queueDepth = (int) $pdoMetrics->query("SELECT COUNT(*) FROM queue WHERE status IN ('pending','retry')")->fetchColumn();
+
+        echo "migration_jobs_total {$jobs}\n";
+        echo "migration_jobs_running {$running}\n";
+        echo "migration_jobs_paused {$paused}\n";
+        echo "migration_steps_total {$steps}\n";
+        echo "migration_errors_total {$errors}\n";
+        echo "migration_retries_total {$retries}\n";
+        echo "migration_queue_depth {$queueDepth}\n";
         exit;
     }
 
