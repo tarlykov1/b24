@@ -40,6 +40,7 @@ php bin/migration-module execute --job-id=$JOB_ID
 - Delta sync: `delta:plan`, `delta:execute`, `delta:scan`, `delta:report`, `delta:resume`, `delta:cutover-check`
 - Baseline /upload reuse: `baseline:index`, `baseline:status`, `baseline:verify`
 - Verification: `verify:counts`, `verify:relations`, `verify:integrity`, `verify:files`
+- Cutover finalization: `cutover:prepare`, `cutover:readiness`, `cutover:arm`, `cutover:freeze:start`, `cutover:freeze:status`, `cutover:delta:final`, `cutover:verify`, `cutover:verdict`, `cutover:abort`, `cutover:resume`, `cutover:complete`
 
 Unsupported platform commands are explicitly reserved for future extensions.
 
@@ -86,4 +87,17 @@ Safety defaults:
 - `docs/audit-discovery.md`
 - `docs/delta-sync.md`
 - `docs/verification.md`
+- `docs/cutover-finalization.md`
 - `docs/future-platform.md`
+
+
+## Cutover Finalization (Delta Freeze Window)
+For final production switch from old source portal to new clean target portal, runtime now provides a persistent freeze-window orchestration layer.
+
+Key guarantees:
+- Deterministic state machine with durable transitions.
+- Resume-safe phases (freeze, delta capture, verification).
+- Structured readiness, mutation journal, verification, and verdict outputs.
+- Honest freeze semantics: mutation detection + policy enforcement, not an implicit global Bitrix write lock.
+
+See full operator guide: `docs/cutover-finalization.md`.

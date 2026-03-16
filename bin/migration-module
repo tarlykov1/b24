@@ -5,6 +5,14 @@ declare(strict_types=1);
 
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Application\DeltaUpload\BaselineDeltaServices;
+use MigrationModule\Application\Cutover\CutoverFinalizationRepository;
+use MigrationModule\Application\Cutover\CutoverFinalizationService;
+use MigrationModule\Application\Cutover\CutoverFinalizationStateMachine;
+use MigrationModule\Application\Cutover\CutoverReadinessEvaluator;
+use MigrationModule\Application\Cutover\CutoverVerificationRunner;
+use MigrationModule\Application\Cutover\FinalDeltaCollector;
+use MigrationModule\Application\Cutover\FreezeWindowManager;
+use MigrationModule\Application\Cutover\GoLiveDecisionEngine;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
 use MigrationModule\Preflight\CheckContext;
@@ -130,6 +138,16 @@ if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '')
 
 $runtime = new PrototypeRuntime($storage, $sourceAdapter, $targetAdapter, new IdConflictResolutionPolicy(), new UserHandlingPolicy(), $config);
 $uploadDelta = new BaselineDeltaServices($storage);
+$cutoverFinalization = new CutoverFinalizationService(
+    new CutoverFinalizationRepository($storage->pdo()),
+    new CutoverFinalizationStateMachine(),
+    new CutoverReadinessEvaluator(),
+    new FreezeWindowManager(),
+    new FinalDeltaCollector($storage),
+    new CutoverVerificationRunner(),
+    new GoLiveDecisionEngine(),
+    $storage,
+);
 $jobId = (string) ($options['job-id'] ?? '');
 
 if ($command === 'help') {
@@ -141,6 +159,7 @@ if ($command === 'help') {
         'delta:plan', 'delta:execute',
         'baseline:index', 'baseline:status', 'baseline:verify', 'delta:scan', 'delta:resume', 'delta:report', 'delta:cutover-check',
         'verify:relations', 'verify:counts', 'verify:integrity', 'verify:files',
+        'cutover:prepare','cutover:readiness','cutover:arm','cutover:freeze:start','cutover:freeze:status','cutover:delta:final','cutover:verify','cutover:verdict','cutover:abort','cutover:resume','cutover:complete',
     ]]);
 }
 
@@ -180,7 +199,7 @@ if ($command === 'create-job') {
     out(['job_id' => $storage->createJob((string) ($options['mode'] ?? 'initial'))]);
 }
 
-if ($jobId === '' && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'audit:run', 'audit:summary', 'audit:report', 'audit:velocity', 'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute'], true)) {
+if ($jobId === '' && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'audit:run', 'audit:summary', 'audit:report', 'audit:velocity', 'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute','cutover:freeze:status','cutover:verdict','cutover:abort','cutover:resume','cutover:complete'], true)) {
     out(['error' => 'job_id_required', 'usage' => $command . ' --job-id=<id>'], 2);
 }
 if ($jobId !== '') {
@@ -253,6 +272,46 @@ switch ($command) {
             out(['plan' => $plan, 'executed' => false, 'message' => 'Execution is metadata-only in current runtime. Apply cleanup manually or via dedicated destructive adapter.']);
         }
         out(['plan' => $plan, 'mode' => $command === 'target:inspect' ? 'inspect' : 'plan']);
+    case 'cutover:prepare':
+        $freezeId = (string) ($options['freeze-id'] ?? ('freeze_' . bin2hex(random_bytes(4))));
+        $meta = isset($options['meta-json']) ? (json_decode((string) $options['meta-json'], true) ?: []) : [];
+        out($cutoverFinalization->prepare($freezeId, $jobId, (string) ($options['source-instance-id'] ?? 'source-prod'), (string) ($options['target-instance-id'] ?? 'target-clean'), (string) ($options['actor'] ?? 'operator'), $meta));
+    case 'cutover:readiness':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $signals = isset($options['signals-json']) ? (json_decode((string) $options['signals-json'], true) ?: []) : [];
+        out($cutoverFinalization->readiness($freezeId, $signals));
+    case 'cutover:arm':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $domains = isset($options['protected-domains']) ? array_values(array_filter(explode(',', (string) $options['protected-domains']))) : ['users', 'tasks', 'crm', 'comments', 'files', 'permissions', 'custom_fields'];
+        out($cutoverFinalization->arm($freezeId, (string) ($options['actor'] ?? 'operator'), (string) ($options['mode'] ?? 'advisory_freeze'), $domains));
+    case 'cutover:freeze:start':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $domains = isset($options['protected-domains']) ? array_values(array_filter(explode(',', (string) $options['protected-domains']))) : ['users', 'tasks', 'crm', 'comments', 'files', 'permissions', 'custom_fields'];
+        $mutations = isset($options['mutations-json']) ? (json_decode((string) $options['mutations-json'], true) ?: []) : [];
+        out($cutoverFinalization->freezeStart($freezeId, (string) ($options['actor'] ?? 'operator'), (string) ($options['mode'] ?? 'advisory_freeze'), $domains, $mutations));
+    case 'cutover:freeze:status':
+        out($cutoverFinalization->status((string) ($options['freeze-id'] ?? '')));
+    case 'cutover:delta:final':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $baseline = isset($options['baseline-json']) ? (json_decode((string) $options['baseline-json'], true) ?: []) : [];
+        out($cutoverFinalization->finalDelta($freezeId, (string) ($options['actor'] ?? 'operator'), $baseline));
+    case 'cutover:verify':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $signals = isset($options['signals-json']) ? (json_decode((string) $options['signals-json'], true) ?: []): [];
+        out($cutoverFinalization->verify($freezeId, (string) ($options['actor'] ?? 'operator'), $signals));
+    case 'cutover:verdict':
+        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $ctx = isset($options['context-json']) ? (json_decode((string) $options['context-json'], true) ?: []): [];
+        out($cutoverFinalization->verdict($freezeId, $ctx));
+    case 'cutover:abort':
+        out($cutoverFinalization->abort((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator'), (string) ($options['reason'] ?? 'operator_abort')));
+    case 'cutover:resume':
+        out($cutoverFinalization->resume((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator')));
+    case 'cutover:complete':
+        $override = (($options['override'] ?? '0') === '1');
+        $payload = isset($options['override-json']) ? (json_decode((string) $options['override-json'], true) ?: []) : [];
+        out($cutoverFinalization->complete((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator'), $override, $payload));
+
     case 'delta:plan':
         if (isset($options['scan-id'])) {
             out($uploadDelta->buildTransferPlan($jobId, (string) $options['scan-id'], (string) ($options['policy'] ?? 'balanced')));
