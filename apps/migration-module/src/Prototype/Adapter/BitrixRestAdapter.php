@@ -254,6 +254,12 @@ final class BitrixRestAdapter implements SourceAdapterInterface, TargetAdapterIn
         return ['target_id' => $id, 'status' => ((bool) ($response['result'] ?? true)) ? 'updated' : 'partial_failure'];
     }
 
+
+    public function apply(string $entityType, array $payload): array
+    {
+        return $this->upsert($entityType, $payload, false);
+    }
+
     public function exists(string $entityType, string $targetId): bool
     {
         if ($targetId === '') {

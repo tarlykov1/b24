@@ -190,3 +190,52 @@ CREATE TABLE IF NOT EXISTS migration_repair_plans (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   applied_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS schema_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  runtime_mode TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS entity_graph (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  graph_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS extract_progress (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  strategy TEXT NOT NULL,
+  batch_size INTEGER NOT NULL,
+  rows_read INTEGER NOT NULL,
+  boundaries_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cursors (
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  strategy TEXT NOT NULL,
+  last_processed_id TEXT,
+  last_processed_timestamp TEXT,
+  batch_start TEXT,
+  batch_end TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(job_id, entity_type, table_name)
+);
+
+CREATE TABLE IF NOT EXISTS db_verify_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  verify_mode TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

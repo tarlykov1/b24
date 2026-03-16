@@ -12,4 +12,8 @@
 - healing summary доступен через `report`/`status`.
 
 ## Storage
-SQLite tables: `jobs`, `queue`, `entity_map`, `user_map`, `logs`, `checkpoint`, `diff`, `integrity_issues`, `state`.
+SQLite tables: `jobs`, `queue`, `entity_map`, `user_map`, `logs`, `checkpoint`, `diff`, `integrity_issues`, `state`, `schema_snapshots`, `entity_graph`, `extract_progress`, `cursors`, `db_verify_results`.
+
+
+## MySQL-assisted migration architecture
+См. `docs/mysql-assisted-migration-architecture.md` для discovery/snapshot/graph/extract/cursor/DB verify backbone.
