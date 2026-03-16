@@ -769,3 +769,105 @@ CREATE TABLE IF NOT EXISTS preflight_reports (
   config_hash TEXT NOT NULL,
   result_json TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS cutover_freeze_sessions (
+  freeze_window_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  source_instance_id TEXT NOT NULL,
+  target_instance_id TEXT NOT NULL,
+  current_state TEXT NOT NULL,
+  initiated_by TEXT NOT NULL,
+  opened_at TEXT,
+  expected_freeze_start TEXT,
+  expected_freeze_end TEXT,
+  actual_freeze_start TEXT,
+  actual_freeze_end TEXT,
+  delta_baseline_reference TEXT,
+  final_delta_checkpoint TEXT,
+  verification_summary TEXT,
+  verdict TEXT,
+  blocker_count INTEGER NOT NULL DEFAULT 0,
+  resumable_flag INTEGER NOT NULL DEFAULT 1,
+  abort_reason TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(job_id) REFERENCES jobs(id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_freeze_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  event_name TEXT NOT NULL,
+  from_state TEXT NOT NULL,
+  to_state TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_mutation_journal (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  detected_at TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  mutation_kind TEXT NOT NULL,
+  evidence_source TEXT NOT NULL,
+  confidence TEXT NOT NULL,
+  policy_impact TEXT NOT NULL,
+  auto_recapture_possible INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_readiness_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_verification_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  color TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_verdict_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  verdict TEXT NOT NULL,
+  override_allowed INTEGER NOT NULL DEFAULT 0,
+  override_risk_level TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_operator_overrides (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_phase_checkpoints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  freeze_window_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  checkpoint_ref TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(freeze_window_id) REFERENCES cutover_freeze_sessions(freeze_window_id)
+);
