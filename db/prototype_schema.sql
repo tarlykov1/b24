@@ -451,3 +451,114 @@ CREATE TABLE IF NOT EXISTS job_metrics (
   tags_json TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS cutover_runs (
+  cutover_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  policy_json TEXT NOT NULL,
+  lock_owner TEXT,
+  lock_acquired_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(job_id) REFERENCES jobs(id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_stages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  stage_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  error_json TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  execution_key TEXT NOT NULL,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id),
+  UNIQUE(cutover_id, execution_key)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  check_group TEXT NOT NULL,
+  check_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_approvals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  approval_scope TEXT NOT NULL,
+  approver_identity TEXT NOT NULL,
+  status TEXT NOT NULL,
+  comment TEXT,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_windows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  window_type TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  timezone TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  artifact_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS cutover_policies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cutover_id TEXT NOT NULL,
+  policy_name TEXT NOT NULL,
+  policy_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS rollback_runs (
+  rollback_id TEXT PRIMARY KEY,
+  cutover_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(cutover_id) REFERENCES cutover_runs(cutover_id)
+);
+
+CREATE TABLE IF NOT EXISTS rollback_stages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rollback_id TEXT NOT NULL,
+  stage_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(rollback_id) REFERENCES rollback_runs(rollback_id)
+);
