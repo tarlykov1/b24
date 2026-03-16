@@ -4,40 +4,8 @@
 declare(strict_types=1);
 
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
-use MigrationModule\Application\AuditDiscovery\SourceAuditEngine;
-use MigrationModule\Application\Consistency\ConsistencyEngine;
-use MigrationModule\Application\Consistency\ConflictResolutionEngine;
-use MigrationModule\Application\Consistency\RepairEngine;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
-use MigrationModule\Application\Readiness\SystemCheckService;
-use MigrationModule\Installation\ConfigLintService;
-use MigrationModule\Installation\InstallWizardService;
-use MigrationModule\Application\Execution\DistributedWorkerControlPlane;
-use MigrationModule\Application\Intelligence\MigrationIntelligenceEngine;
-use MigrationModule\Application\Throttling\AdaptiveRateLimiter;
-use MigrationModule\Application\GoLive\CommunicationTemplateEngine;
-use MigrationModule\Application\GoLive\CutoverAuditTrail;
-use MigrationModule\Application\GoLive\CutoverPlanService;
-use MigrationModule\Application\GoLive\CutoverRehearsalEngine;
-use MigrationModule\Application\GoLive\FinalDeltaSyncOrchestrator;
-use MigrationModule\Application\GoLive\FreezePolicyManager;
-use MigrationModule\Application\GoLive\GoLiveOrchestrator;
-use MigrationModule\Application\GoLive\GoLiveReadinessEngine;
-use MigrationModule\Application\GoLive\GoLiveStateMachine;
-use MigrationModule\Application\GoLive\PreflightCheckRunner;
-use MigrationModule\Application\GoLive\RollbackCoordinator;
-use MigrationModule\Application\GoLive\RunbookGenerator;
-use MigrationModule\Application\GoLive\SmokeTestRunner;
-use MigrationModule\Application\GoLive\WindowRecommendationService;
-use MigrationModule\Application\Cutover\CutoverRepository;
-use MigrationModule\Application\Cutover\CutoverService;
-use MigrationModule\Application\Cutover\CutoverStateMachine as EnterpriseCutoverStateMachine;
-use MigrationModule\Application\Lifecycle\LifecycleTransitionGuard;
-use MigrationModule\Application\Sync\ContinuousSyncService;
-use MigrationModule\ControlCenter\Controller\JobController;
-use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
-use MigrationModule\Infrastructure\Persistence\MigrationRepository;
 use MigrationModule\Prototype\Adapter\BitrixRestAdapter;
 use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
@@ -46,50 +14,6 @@ use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
 use MigrationModule\Prototype\Policy\UserHandlingPolicy;
 use MigrationModule\Prototype\PrototypeRuntime;
 use MigrationModule\Prototype\Storage\SqliteStorage;
-use MigrationModule\Prototype\DB\CursorManager;
-use MigrationModule\Prototype\DB\DbSafetyGuard;
-use MigrationModule\Prototype\DB\DbVerificationEngine;
-use MigrationModule\Prototype\DB\EntityGraphBuilder;
-use MigrationModule\Prototype\DB\MySqlSourceDiscovery;
-use MigrationModule\Prototype\DB\MySqlSourceExtractor;
-use MigrationModule\Prototype\DB\PdoMySqlSourceReadAdapter;
-use MigrationModule\Prototype\DB\PdoMySqlTargetReadAdapter;
-use MigrationModule\Simulation\Application\FailureSimulationService;
-use MigrationModule\Simulation\Application\SimulationEngine;
-use MigrationModule\Simulation\Domain\SimulationInput;
-use MigrationModule\Simulation\Estimator\CRMEstimator;
-use MigrationModule\Simulation\Estimator\FilesEstimator;
-use MigrationModule\Simulation\Estimator\TasksEstimator;
-use MigrationModule\Simulation\Estimator\UsersEstimator;
-use MigrationModule\Simulation\Infrastructure\SimulationRepository;
-use MigrationModule\Simulation\Report\SimulationReportBuilder;
-use MigrationModule\Simulation\Scenario\ScenarioBuilder;
-use MigrationModule\Reconciliation\ReconciliationEngine;
-use MigrationModule\Delta\DeltaSyncEngine as RuntimeDeltaSyncEngine;
-use MigrationModule\Cutover\CutoverReadinessAnalyzer;
-use MigrationModule\Hypercare\AdoptionAnalyticsEngine as PostMigrationAdoptionAnalyticsEngine;
-use MigrationModule\Hypercare\AdoptionRiskEngine;
-use MigrationModule\Hypercare\HypercareDashboard;
-use MigrationModule\Hypercare\HypercareMonitor as PostMigrationHypercareMonitor;
-use MigrationModule\Hypercare\HypercareScheduler;
-use MigrationModule\Hypercare\IntegrityRepairEngine;
-use MigrationModule\Hypercare\OptimizationEngine;
-use MigrationModule\Hypercare\PerformanceMonitor;
-use MigrationModule\HealthMonitor\AutoRecoveryEngine;
-use MigrationModule\HealthMonitor\FilesystemMonitor;
-use MigrationModule\HealthMonitor\HealthMonitor;
-use MigrationModule\HealthMonitor\QueueMonitor;
-use MigrationModule\HealthMonitor\RestThrottleDetector;
-use MigrationModule\HealthMonitor\RetryAnalyzer;
-use MigrationModule\HealthMonitor\WorkerWatchdog;
-use MigrationModule\Infrastructure\Persistence\MySqlMigrationRunner;
-use MigrationModule\Application\Production\BackupManager;
-use MigrationModule\Application\Production\ConfigManager;
-use MigrationModule\Application\Production\DisasterRecoveryService;
-use MigrationModule\Application\Production\HardeningService;
-use MigrationModule\Application\Production\LogRotationService;
-use MigrationModule\Application\Production\ProductionLayoutManager;
-use MigrationModule\Application\Production\UpgradeManager;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -109,26 +33,21 @@ if (is_file($autoload)) {
     });
 }
 
-function out(array $payload, int $code = 0): never {
-    echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+function out(array $payload, int $code = 0): never
+{
+    echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
     exit($code);
 }
 
-/** @return array{options: array<string,string>, positionals: array<int,string>} */
 function parseArgs(array $argv): array
 {
-    $options = [];
     $positionals = [];
-    foreach ($argv as $index => $arg) {
-        if ($index < 2) {
-            continue;
-        }
-
+    $options = [];
+    foreach (array_slice($argv, 2) as $arg) {
         if (!str_starts_with((string) $arg, '--')) {
-            $positionals[] = (string) $arg;
+            $positionals[] = $arg;
             continue;
         }
-
         [$key, $value] = array_pad(explode('=', substr((string) $arg, 2), 2), 2, '1');
         $options[$key] = $value;
     }
@@ -136,1169 +55,246 @@ function parseArgs(array $argv): array
     return ['options' => $options, 'positionals' => $positionals];
 }
 
+function recordsByAdapter(object $adapter, string $entityType, int $batch = 100): array
+{
+    if (!method_exists($adapter, 'fetch')) {
+        return [];
+    }
+
+    $offset = 0;
+    $rows = [];
+    while (true) {
+        $chunk = $adapter->fetch($entityType, $offset, $batch);
+        if ($chunk === []) {
+            break;
+        }
+        $rows = array_merge($rows, $chunk);
+        $offset += count($chunk);
+    }
+
+    return $rows;
+}
+
+function tableExists(PDO $pdo, string $table): bool
+{
+    try {
+        $stmt = $pdo->query('SELECT 1 FROM ' . $table . ' LIMIT 1');
+        $stmt->fetch();
+        return true;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
+function futureCommandResponse(string $command): never
+{
+    out([
+        'ok' => false,
+        'command' => $command,
+        'message' => 'Command not available in current migration runtime. Reserved for future platform extensions.',
+        'future' => true,
+    ], 2);
+}
+
 $command = $argv[1] ?? 'help';
-$parsedArgs = parseArgs($argv);
-$options = $parsedArgs['options'];
-$positionals = $parsedArgs['positionals'];
-$warnings = [];
+$parsed = parseArgs($argv);
+$options = $parsed['options'];
 
-$lifecycleCommands = ['validate', 'create-job', 'dry-run', 'execute', 'resume', 'pause', 'verify', 'report', 'status'];
-$requiresJob = ['dry-run', 'execute', 'resume', 'pause', 'verify', 'report', 'status'];
+$futureNamespaces = ['snapshot:', 'baseline:', 'reconciliation:', 'conflicts:', 'watermarks:'];
+if (in_array($command, ['snapshot', 'baseline', 'reconciliation', 'conflicts', 'watermarks'], true)) {
+    futureCommandResponse($command);
+}
+foreach ($futureNamespaces as $ns) {
+    if (str_starts_with($command, $ns)) {
+        futureCommandResponse($command);
+    }
+}
+
 $configPath = (string) ($options['config'] ?? 'migration.config.yml');
-$jobId = $options['job-id'] ?? null;
-$outputFormat = (string) ($options['format'] ?? 'json');
-$mode = (string) ($options['mode'] ?? '');
+$config = (new ConfigLoader())->load($configPath);
+$storage = new SqliteStorage((string) ($config['storage']['path'] ?? '.prototype/migration.sqlite'));
+$storage->initSchema();
 
-if (in_array($command, $lifecycleCommands, true)) {
-    if ($outputFormat !== 'json' && $outputFormat !== 'text') {
-        out(['error' => 'invalid_argument', 'field' => 'format', 'expected' => ['json', 'text']], 2);
-    }
-
-    if ($mode !== '' && !in_array($mode, ['dry-run', 'execute', 'verify', 'report'], true)) {
-        out(['error' => 'invalid_argument', 'field' => 'mode', 'expected' => ['dry-run', 'execute', 'verify', 'report']], 2);
-    }
-
-    if (isset($options['job-id']) === false && isset($positionals[1]) && $positionals[1] !== '') {
-        $jobId = $positionals[1];
-        $warnings[] = 'Deprecated positional CLI contract used. Please migrate to --job-id=<id>.';
-    }
-
-    if (isset($options['config']) === false && isset($positionals[0]) && str_ends_with($positionals[0], '.yml')) {
-        $configPath = $positionals[0];
-        $warnings[] = 'Deprecated positional CLI contract used. Please migrate to --config=<path>.';
-    }
-
-    if (in_array($command, $requiresJob, true) && (!is_string($jobId) || $jobId === '')) {
-        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' --job-id=<id> [--config=<path>]'], 2);
-    }
+$sourceAdapter = new StubSourceAdapter();
+$targetAdapter = new StubTargetAdapter();
+if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN') ?: '') !== '')) {
+    $client = new BitrixRestClient((string) ($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL')), (string) ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN')));
+    $restAdapter = new BitrixRestAdapter($client);
+    $sourceAdapter = $restAdapter;
+    $targetAdapter = $restAdapter;
 }
 
-if ($warnings !== []) {
-    fwrite(STDERR, '[deprecated_cli] ' . implode(' ', $warnings) . PHP_EOL);
+$runtime = new PrototypeRuntime($storage, $sourceAdapter, $targetAdapter, new IdConflictResolutionPolicy(), new UserHandlingPolicy(), $config);
+$jobId = (string) ($options['job-id'] ?? '');
+
+if ($command === 'help') {
+    out(['commands' => [
+        'validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'pause', 'retry', 'status', 'verify', 'report',
+        'audit:run', 'audit:summary', 'audit:report', 'audit:velocity',
+        'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute',
+        'delta:plan', 'delta:execute',
+        'verify:relations', 'verify:counts', 'verify:integrity', 'verify:files',
+    ]]);
 }
 
-$audits = [
-    'audit:portal' => 'portal',
-    'audit:users' => 'users',
-    'audit:tasks' => 'tasks',
-    'audit:files' => 'files',
-    'audit:crm' => 'crm',
-    'audit:permissions' => 'permissions',
-    'audit:linkage' => 'linkage',
-    'audit:summary' => 'summary',
-    'audit:report' => 'report',
-    'audit:run' => 'run',
-];
-if (isset($audits[$command])) {
-    $deep = in_array('--deep', $argv, true);
-    out((new AuditDiscoveryService())->run($audits[$command], $deep));
+if (in_array($command, ['validate', 'config:validate'], true)) {
+    out($command === 'validate' ? $runtime->validate() : $runtime->configValidate(), $command === 'validate' ? 0 : (($runtime->configValidate()['ok'] ?? false) ? 0 : 2));
 }
 
-if ($command === 'audit:velocity') {
-    $opts = ['days' => 30, 'sample-size' => 1000, 'entity' => null, 'output' => 'json'];
-    foreach (array_slice($argv, 2) as $arg) {
-        if (!str_starts_with($arg, '--')) {
-            continue;
-        }
-
-        [$key, $value] = array_pad(explode('=', substr($arg, 2), 2), 2, '');
-        if ($key === 'days') {
-            $opts['days'] = max(1, (int) $value);
-        }
-        if ($key === 'sample-size') {
-            $opts['sample-size'] = max(50, (int) $value);
-        }
-        if ($key === 'entity' && $value !== '') {
-            $opts['entity'] = $value;
-        }
-        if ($key === 'output' && $value !== '') {
-            $opts['output'] = $value;
-        }
-    }
-
-    $dsn = (string) ($_ENV['BITRIX_DB_DSN'] ?? getenv('BITRIX_DB_DSN') ?: '');
-    $pdo = null;
-    if ($dsn !== '') {
-        $pdo = new PDO($dsn, (string) ($_ENV['BITRIX_DB_USER'] ?? getenv('BITRIX_DB_USER') ?: ''), (string) ($_ENV['BITRIX_DB_PASSWORD'] ?? getenv('BITRIX_DB_PASSWORD') ?: ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        if (str_starts_with($dsn, 'mysql:')) {
-            $pdo->exec('SET SESSION TRANSACTION READ ONLY');
-        }
-    }
-
-    $rest = null;
-    if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN') ?: '') !== '')) {
-        $rest = new BitrixRestClient((string) ($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL')), (string) ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN')));
-    }
-
-    $upload = (string) ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload');
-    $report = (new ChangeVelocityAnalyzer())->analyze($pdo, $rest, $upload, (int) $opts['days'], (int) $opts['sample-size'], is_string($opts['entity']) ? $opts['entity'] : null);
-
-    out($opts['output'] === 'json' ? $report : ['status' => 'ok', 'report' => 'reports/change_velocity_report.json']);
+if ($command === 'create-job') {
+    out(['job_id' => $storage->createJob((string) ($options['mode'] ?? 'initial'))]);
 }
 
-if (in_array($command, ['install:check', 'install:init-db', 'install:generate-config', 'install:validate', 'install:report', 'install:apply', 'config:lint', 'db:migrate', 'db:status'], true)) {
-    $installConfigPath = (string) ($options['install-config'] ?? 'apps/migration-module/config/templates/production.mysql-first.json');
-    $config = json_decode((string) file_get_contents($installConfigPath), true);
-    if (!is_array($config)) {
-        out(['ok' => false, 'error' => 'invalid_install_config', 'path' => $installConfigPath], 2);
-    }
-
-    $wizard = new InstallWizardService();
-    $dsn = (string) ($config['platform']['mysql_dsn'] ?? ($_ENV['MIGRATION_PLATFORM_DSN'] ?? ''));
-    $user = (string) ($config['platform']['mysql_user'] ?? ($_ENV['MIGRATION_PLATFORM_DB_USER'] ?? ''));
-    $pass = (string) ($config['platform']['mysql_password'] ?? ($_ENV['MIGRATION_PLATFORM_DB_PASSWORD'] ?? ''));
-
-    if ($command === 'install:check' || $command === 'install:validate' || $command === 'config:lint' || $command === 'install:report') {
-        $lint = (new ConfigLintService())->lint($config);
-        $code = $lint['ok'] ? 0 : 2;
-        out(['ok' => $lint['ok'], 'command' => $command, 'validation' => $lint], $code);
-    }
-
-    if ($dsn === '') {
-        out(['ok' => false, 'error' => 'platform_mysql_dsn_required'], 2);
-    }
-    $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
-
-    if ($command === 'install:init-db' || $command === 'db:migrate') {
-        $result = $wizard->initDb($pdo, __DIR__ . '/../db/mysql_platform_schema.sql');
-        out($result, ($result['ok'] ?? false) ? 0 : 2);
-    }
-
-    if ($command === 'db:status') {
-        out((new MySqlMigrationRunner($pdo))->status());
-    }
-
-    if ($command === 'install:generate-config') {
-        $outputPath = (string) ($options['output'] ?? 'config/generated-install-config.json');
-        out($wizard->generateConfig($config, $outputPath));
-    }
-
-    if ($command === 'install:apply') {
-        $lint = (new ConfigLintService())->lint($config);
-        if ($lint['ok'] !== true) {
-            out(['ok' => false, 'error' => 'install_blocked', 'validation' => $lint], 2);
-        }
-        $migration = $wizard->initDb($pdo, __DIR__ . '/../db/mysql_platform_schema.sql');
-        $generated = $wizard->generateConfig($config, (string) ($options['output'] ?? 'config/generated-install-config.json'));
-        out(['ok' => true, 'status' => 'installed', 'db' => $migration, 'config' => $generated]);
-    }
+if ($jobId === '' && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'audit:run', 'audit:summary', 'audit:report', 'audit:velocity', 'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute'], true)) {
+    out(['error' => 'job_id_required', 'usage' => $command . ' --job-id=<id>'], 2);
+}
+if ($jobId !== '') {
+    $storage->assertJobExists($jobId);
 }
 
-try {
-    $config = (new ConfigLoader())->load($configPath);
-    $storagePath = (string) (($config['storage']['path'] ?? '.prototype/migration.sqlite'));
-    $storage = new SqliteStorage($storagePath);
-
-    $sourceDbDsn = (string) ($_ENV['BITRIX_SOURCE_DB_DSN'] ?? getenv('BITRIX_SOURCE_DB_DSN') ?: '');
-    $sourceDbUser = (string) ($_ENV['BITRIX_SOURCE_DB_USER'] ?? getenv('BITRIX_SOURCE_DB_USER') ?: '');
-    $sourceDbPassword = (string) ($_ENV['BITRIX_SOURCE_DB_PASSWORD'] ?? getenv('BITRIX_SOURCE_DB_PASSWORD') ?: '');
-    $targetDbDsn = (string) ($_ENV['BITRIX_TARGET_DB_DSN'] ?? getenv('BITRIX_TARGET_DB_DSN') ?: '');
-    $targetDbUser = (string) ($_ENV['BITRIX_TARGET_DB_USER'] ?? getenv('BITRIX_TARGET_DB_USER') ?: '');
-    $targetDbPassword = (string) ($_ENV['BITRIX_TARGET_DB_PASSWORD'] ?? getenv('BITRIX_TARGET_DB_PASSWORD') ?: '');
-
-    $sourceDbPdo = null;
-    $targetDbPdo = null;
-    if ($sourceDbDsn !== '') {
-        $sourceDbPdo = new PDO($sourceDbDsn, $sourceDbUser, $sourceDbPassword, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
-        if (str_starts_with($sourceDbDsn, 'mysql:')) {
-            $sourceDbPdo->exec('SET SESSION TRANSACTION READ ONLY');
+switch ($command) {
+    case 'plan':
+        out($runtime->plan($jobId));
+    case 'plan:show':
+        out($runtime->showPlan($jobId));
+    case 'plan:export':
+        out($runtime->exportPlan($jobId, (string) ($options['output'] ?? 'reports/plan-' . $jobId . '.json')));
+    case 'dry-run':
+        out($runtime->dryRun($jobId));
+    case 'execute':
+        out($runtime->execute($jobId));
+    case 'resume':
+        out($runtime->execute($jobId, true));
+    case 'pause':
+        $storage->setJobStatus($jobId, 'paused');
+        out(['job_id' => $jobId, 'status' => 'paused']);
+    case 'retry':
+        $storage->setJobStatus($jobId, 'running');
+        out(['job_id' => $jobId, 'status' => 'running', 'retry' => true]);
+    case 'status':
+        out(['job_id' => $jobId, 'status' => $storage->jobStatus($jobId), 'summary' => $storage->summary($jobId), 'delta' => $storage->deltaStatus($jobId)]);
+    case 'verify':
+        out($runtime->verify($jobId));
+    case 'report':
+        $report = ['job_id' => $jobId, 'status' => $storage->jobStatus($jobId), 'summary' => $storage->summary($jobId), 'delta' => $storage->deltaStatus($jobId), 'generated_at' => date(DATE_ATOM)];
+        if (!is_dir('reports')) {
+            mkdir('reports', 0777, true);
         }
-    }
-    if ($targetDbDsn !== '') {
-        $targetDbPdo = new PDO($targetDbDsn, $targetDbUser, $targetDbPassword, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
-        if (str_starts_with($targetDbDsn, 'mysql:')) {
-            $targetDbPdo->exec('SET SESSION TRANSACTION READ ONLY');
+        file_put_contents('reports/migration_report.json', (string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        out($report);
+    case 'audit:run':
+    case 'audit:summary':
+    case 'audit:report':
+        $kind = str_replace('audit:', '', $command);
+        out((new AuditDiscoveryService())->run($kind, isset($options['deep'])));
+    case 'audit:velocity':
+        $dsn = (string) ($_ENV['BITRIX_DB_DSN'] ?? getenv('BITRIX_DB_DSN') ?: '');
+        $pdo = $dsn !== '' ? new PDO($dsn, (string) ($_ENV['BITRIX_DB_USER'] ?? getenv('BITRIX_DB_USER') ?: ''), (string) ($_ENV['BITRIX_DB_PASSWORD'] ?? getenv('BITRIX_DB_PASSWORD') ?: ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]) : null;
+        $rest = null;
+        if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN') ?: '') !== '')) {
+            $rest = new BitrixRestClient((string) ($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL')), (string) ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN')));
         }
-    }
-
-    $sourceAdapter = new StubSourceAdapter();
-    $targetAdapter = new StubTargetAdapter();
-    if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '')) {
-        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
-        $restAdapter = new BitrixRestAdapter($client);
-        $sourceAdapter = $restAdapter;
-        $targetAdapter = $restAdapter;
-    }
-
-    $runtime = new PrototypeRuntime(
-        $storage,
-        $sourceAdapter,
-        $targetAdapter,
-        new IdConflictResolutionPolicy(),
-        new UserHandlingPolicy(),
-        $config,
-    );
-
-    if ($command === 'help') {
-        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'backup:create', 'backup:list', 'backup:restore', 'restore', 'upgrade:check', 'upgrade:install', 'upgrade:rollback', 'config:get', 'config:set', 'config:validate', 'logs:rotate', 'system:repair', 'system:recover', 'uninstall', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration sync:start <job_id>', 'migration sync:stop <job_id>', 'migration sync:status <job_id>', 'migration sync:verify <job_id>', 'migration sync:conflicts <job_id>', 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]', 'migration sync:drift <job_id>', 'migration sync:policy <job_id>', 'migration sync:service <job_id>', 'migration dr:status <job_id>', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>', 'migration health --job-id=<id>', 'migration health:auto-recovery --job-id=<id> [--disable]', 'migration health:issues --job-id=<id>']]);
-    }
-
-    if ($command === 'validate') {
-        out($runtime->validate());
-    }
-
-    if ($command === 'config:validate') {
-        out($runtime->configValidate());
-    }
-
-    $storage->initSchema();
-
-    if ($command === 'create-job') {
-        $mode = (string) ($options['mode'] ?? (($positionals[0] ?? '') !== '' && !str_ends_with((string) ($positionals[0] ?? ''), '.yml') ? $positionals[0] : 'execute'));
-        out(['job_id' => $storage->createJob($mode), 'status' => 'created', 'mode' => $mode]);
-    }
-
-    
-    if (str_starts_with($command, 'cutover:')) {
-        $opts = [];
-        foreach (array_slice($argv, 2) as $arg) {
-            if (!str_starts_with((string) $arg, '--')) {
-                continue;
+        out((new ChangeVelocityAnalyzer())->analyze($pdo, $rest, (string) ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload')));
+    case 'target:inspect':
+    case 'target:cleanup-plan':
+    case 'target:cleanup-execute':
+        $targets = [
+            'contacts' => 'crm.contact',
+            'deals' => 'crm.deal',
+            'tasks' => 'tasks.task',
+        ];
+        $plan = ['delete' => [], 'preserve' => ['administrators', 'system users', 'configuration entities'], 'note' => 'Infrastructure configuration is never touched.'];
+        foreach ($targets as $label => $entityType) {
+            $rows = recordsByAdapter($targetAdapter, $entityType, 50);
+            foreach ($rows as $row) {
+                $name = strtolower((string) ($row['TITLE'] ?? $row['title'] ?? $row['NAME'] ?? $row['name'] ?? ''));
+                $isTest = str_contains($name, 'test') || str_contains($name, 'demo') || str_contains($name, 'sample');
+                if ($isTest) {
+                    $plan['delete'][] = ['entity' => $label, 'id' => (string) ($row['ID'] ?? $row['id'] ?? ''), 'name' => $name];
+                }
             }
-            [$k, $v] = array_pad(explode('=', substr((string) $arg, 2), 2), 2, 'true');
-            $opts[$k] = $v;
         }
-
-        $enterpriseRepo = new CutoverRepository($storage->pdo());
-        $enterpriseSm = new EnterpriseCutoverStateMachine();
-        $enterpriseCutover = new CutoverService($enterpriseRepo, $enterpriseSm);
-        $cutoverId = (string) ($opts['cutover-id'] ?? ('cutover_' . substr(hash('sha256', (string) microtime(true)), 0, 10)));
-        $jobForCutover = (string) ($opts['job-id'] ?? ($argv[2] ?? 'job-default'));
-        $dryRun = isset($opts['dry-run']);
-        $strict = isset($opts['strict']);
-
-        if ($command === 'cutover:window:check') {
-            out($enterpriseCutover->windowCheck($cutoverId, $dryRun));
+        if ($command === 'target:cleanup-execute') {
+            out(['plan' => $plan, 'executed' => false, 'message' => 'Execution is metadata-only in current runtime. Apply cleanup manually or via dedicated destructive adapter.']);
         }
-        if ($command === 'cutover:approve') {
-            out($enterpriseCutover->approve($cutoverId, (string) ($opts['scope'] ?? 'migration_operator'), (string) ($opts['approver'] ?? 'cli-operator'), (string) ($opts['comment'] ?? '')));
-        }
-        if ($command === 'cutover:status') {
-            out($enterpriseCutover->status($cutoverId));
-        }
-        if ($command === 'cutover:pause') {
-            out($enterpriseCutover->pause($cutoverId));
-        }
-        if ($command === 'cutover:resume') {
-            out($enterpriseCutover->resume($cutoverId));
-        }
-        if ($command === 'cutover:abort') {
-            out($enterpriseCutover->abort($cutoverId));
-        }
-        if ($command === 'cutover:rollback:prepare') {
-            out($enterpriseCutover->rollbackPrepare($cutoverId));
-        }
-        if ($command === 'cutover:rollback:execute') {
-            out($enterpriseCutover->rollbackExecute($cutoverId));
-        }
-        if ($command === 'cutover:report') {
-            out($enterpriseCutover->report($cutoverId));
-        }
-        if ($command === 'cutover:readiness') {
-            out($enterpriseCutover->readiness($cutoverId, [
-                'completed_waves' => (int) ($opts['completed-waves'] ?? 3),
-                'required_waves' => (int) ($opts['required-waves'] ?? 3),
-                'residual_delta' => (int) ($opts['residual-delta'] ?? 0),
-                'max_residual_delta' => (int) ($opts['max-residual-delta'] ?? 10),
-                'connectivity_ok' => (($opts['connectivity-ok'] ?? 'true') === 'true'),
-                'rollback_strategy_defined' => (($opts['rollback-strategy-defined'] ?? 'true') === 'true'),
-                'parallel_cutover_active' => (($opts['parallel-cutover-active'] ?? 'false') === 'true'),
-            ]));
-        }
-        if ($command === 'cutover:go-live') {
-            out($enterpriseCutover->goLive($cutoverId, $dryRun, $strict));
-        }
-        if ($command === 'cutover:plan') {
-            $policy = [
-                'strict_mode' => $strict,
-                'freeze_mode' => (string) ($opts['freeze-mode'] ?? 'operator_confirmed_manual_freeze'),
-                'max_residual_delta' => (int) ($opts['max-residual-delta'] ?? 10),
-                'cutover_window' => [
-                    'start' => (string) ($opts['window-start'] ?? date(DATE_ATOM, time() - 60)),
-                    'end' => (string) ($opts['window-end'] ?? date(DATE_ATOM, time() + 3600)),
-                    'timezone' => (string) ($opts['timezone'] ?? 'UTC'),
-                    'allow_finish_after_window_end' => (($opts['allow-finish-after-window-end'] ?? 'false') === 'true'),
-                ],
-            ];
-            out($enterpriseCutover->plan($jobForCutover, $cutoverId, $policy, (string) ($opts['operator'] ?? 'cli-operator')));
-        }
-
-    }
-
-    if ($command === 'migration' && (($argv[2] ?? '') === 'strategy:generate' || ($argv[2] ?? '') === 'strategy:visualize')) {
-        $engine = new MigrationIntelligenceEngine();
-        if (($argv[2] ?? '') === 'strategy:generate') {
-            out($engine->generate());
-        }
-
-        out($engine->visualize());
-    }
-
-    if (str_starts_with($command, 'simulate')) {
-        $input = new SimulationInput(
-            entityVolumes: [
-                'users' => (int) ($config['entities']['users'] ?? 1000),
-                'deals' => (int) ($config['entities']['deals'] ?? 5000),
-                'tasks' => (int) ($config['entities']['tasks'] ?? 12000),
-                'files' => (int) ($config['entities']['files'] ?? 24000),
-            ],
-            audit: [
-                'custom_fields' => (int) ($config['audit']['custom_fields'] ?? 140),
-                'large_file_ratio' => (float) ($config['audit']['large_file_ratio'] ?? 0.2),
-            ],
-            dependencyGraph: [
-                'deals' => ['users', 'companies'],
-                'tasks' => ['users', 'groups'],
-                'files' => ['tasks'],
-            ],
-            capabilities: [
-                'source_safe_read_qps' => (int) ($config['safety']['source_read_qps'] ?? 90),
-            ],
-            policies: $config['policy'] ?? [],
-        );
-
-        $builder = new ScenarioBuilder();
-        $engine = new SimulationEngine([new UsersEstimator(), new CRMEstimator(), new TasksEstimator(), new FilesEstimator()]);
-        $reportBuilder = new SimulationReportBuilder();
-        $simulationRepo = new SimulationRepository($storage->pdo());
-
-        if ($command === 'simulate') {
-            $scenario = $builder->buildCandidates($input)[1];
-            $run = $engine->run($input, $scenario);
-            $simulationRepo->saveScenario('audit_current', 'v1', $scenario, ['entity_volumes' => $input->entityVolumes, 'audit' => $input->audit]);
-            $simulationRepo->saveRun($run);
-            out(['summary' => $reportBuilder->toJson($run), 'text' => $reportBuilder->toMarkdown($run)]);
-        }
-
-        if ($command === 'simulate:compare') {
-            $comparison = $engine->compare($input, array_slice($builder->buildCandidates($input), 0, 3));
-            $simulationRepo->saveComparison('default_compare', $comparison->toArray());
-            out($comparison->toArray());
-        }
-
-        if ($command === 'simulate:scenario') {
-            $scenario = $builder->custom('Custom', 'full initial migration', ['worker_count' => (int) ($argv[3] ?? 8), 'window_hours' => (float) ($argv[4] ?? 8.0)]);
-            $run = $engine->run($input, $scenario);
-            out($reportBuilder->toJson($run));
-        }
-
-        if ($command === 'simulate:capacity') {
-            $scenario = $builder->buildCandidates($input)[0];
-            $run = $engine->run($input, $scenario);
-            out(['source' => $run->sourceLoadProfile, 'target' => $run->targetLoadProfile, 'window_hours' => $scenario->parameters['window_hours']]);
-        }
-
-        if ($command === 'simulate:failures') {
-            $scenario = $builder->buildCandidates($input)[1];
-            $run = $engine->run($input, $scenario);
-            $withFailures = (new FailureSimulationService())->apply($run->toArray(), ['network_instability', 'worker_crash']);
-            out($withFailures);
-        }
-
-        if ($command === 'simulate:report') {
-            $scenario = $builder->buildCandidates($input)[0];
-            $run = $engine->run($input, $scenario);
-            out(['json' => $reportBuilder->toJson($run), 'markdown' => $reportBuilder->toMarkdown($run)]);
-        }
-    }
-
-    if (str_starts_with($command, 'migration:workers:')) {
-        $limiter = new AdaptiveRateLimiter((string) ($config['throttling']['profile'] ?? 'safe'));
-        $controlPlane = new DistributedWorkerControlPlane($storage, $limiter);
-        $workerJobId = $argv[2] ?? '';
-        if ($workerJobId === '') {
-            out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' <job_id>'], 1);
-        }
-
-        switch ($command) {            case 'migration:workers:init':
-                $queues = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[3] ?? 'users,tasks,crm,files')))));
-                $workerIds = array_values(array_filter(array_map('trim', explode(',', (string) ($argv[4] ?? 'worker-1,worker-2')))));
-                out($controlPlane->bootstrap($workerJobId, $queues, $workerIds));
-            case 'migration:workers:status':
-                out($controlPlane->status($workerJobId));
-            case 'migration:workers:pause':
-                out($controlPlane->pause($workerJobId, (string) ($argv[3] ?? 'operator_request')));
-            case 'migration:workers:resume':
-                out($controlPlane->resume($workerJobId));
-            case 'migration:workers:retry':
-                out($controlPlane->retryQueue($workerJobId, (string) ($argv[3] ?? 'stage_1_users')));
-            case 'migration:workers:heartbeat':
-                $workerId = (string) ($argv[3] ?? 'worker-1');
-                $signal = strtolower((string) ($argv[4] ?? 'ok'));
-                $statusCode = (int) ($argv[5] ?? 0);
-                out($controlPlane->heartbeat($workerJobId, $workerId, $signal !== 'fail', $statusCode));
-            default:
-                out(['error' => 'Unknown workers command', 'command' => $command], 1);
-        }
-    }
-
-
-    if (in_array($command, ['health', 'health:auto-recovery', 'health:issues'], true)) {
-        if ($jobId === null || $jobId === '') {
-            out(['error' => 'job_id_required', 'command' => 'migration ' . $command, 'usage' => 'migration ' . $command . ' --job-id=<id>'], 1);
-        }
-
-        $monitor = new HealthMonitor(
-            new RetryAnalyzer(),
-            new QueueMonitor(),
-            new WorkerWatchdog(),
-            new RestThrottleDetector(),
-            new FilesystemMonitor(),
-            new AutoRecoveryEngine(),
-        );
-
-        if ($command === 'health:auto-recovery') {
-            $enabled = !isset($options['disable']);
-            $stmt = $storage->pdo()->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON CONFLICT(entity_type) DO UPDATE SET status=excluded.status, updated_at=CURRENT_TIMESTAMP');
-            $stmt->execute([
-                'entity_type' => 'health_auto_recovery',
-                'last_sync_time' => null,
-                'records_processed' => 0,
-                'status' => json_encode(['enabled' => $enabled, 'updated_at' => date(DATE_ATOM)], JSON_UNESCAPED_UNICODE),
-            ]);
-
-            out(['job_id' => $jobId, 'auto_recovery' => $enabled ? 'enabled' : 'disabled']);
-        }
-
-        $report = $monitor->check($storage->pdo(), $jobId, false);
-        if ($command === 'health:issues') {
-            out(['job_id' => $jobId, 'issues' => $report['issues']]);
-        }
-
-        out([
-            'title' => 'Migration Health Status',
-            'job_id' => $jobId,
-            'workers' => $report['metrics']['workers'],
-            'queue_depth' => $report['metrics']['queue_depth'],
-            'retry_rate' => ($report['issues'][0]['retry_rate'] ?? 0) . '%',
-            'api_latency' => $report['metrics']['api_latency_ms'] . 'ms',
-            'health_score' => $report['health_score'] . '%',
-            'issues' => $report['issues'],
-        ]);
-    }
-
-    if ($jobId === null && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'system:check', 'backup:create', 'backup:list', 'backup:restore', 'restore', 'upgrade:check', 'upgrade:install', 'upgrade:rollback', 'config:get', 'config:set', 'logs:rotate', 'system:repair', 'system:recover', 'uninstall', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
-        out(['error' => 'job_id_required', 'command' => $command, 'usage' => $command . ' --job-id=<id> [--config=<path>]'], 1);
-    }
-
-    if (in_array($command, ['plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export'], true) && is_string($jobId) && $jobId !== '') {
-        $storage->assertJobExists($jobId);
-    }
-
-    if ($command === 'migration') {
-        $jobController = new JobController($storage->pdo());
-        $diffEngine = new DiffEngine();
-        $reliabilityRepository = new MigrationRepository();
-        $consistencyEngine = new ConsistencyEngine();
-        $conflictResolutionEngine = new ConflictResolutionEngine($reliabilityRepository, $storage->pdo());
-        $repairEngine = new RepairEngine($reliabilityRepository, $storage->pdo());
-        $allSource = static function () use ($sourceAdapter, $config): array {
-            $out = [];
-            $batchSize = max(1, (int) ($config['batch_size'] ?? 100));
-            foreach ($sourceAdapter->entityTypes() as $entityType) {
-                $out[$entityType] = [];
-                $offset = 0;
-                while (true) {
-                    $batch = $sourceAdapter->fetch($entityType, $offset, $batchSize);
-                    if ($batch === []) {
+        out(['plan' => $plan, 'mode' => $command === 'target:inspect' ? 'inspect' : 'plan']);
+    case 'delta:plan':
+        $scanId = 'delta_' . bin2hex(random_bytes(4));
+        $changed = [];
+        foreach ($sourceAdapter->entityTypes() as $entityType) {
+            $sourceRows = recordsByAdapter($sourceAdapter, $entityType, 100);
+            foreach ($sourceRows as $row) {
+                $entityId = (string) ($row['id'] ?? $row['ID'] ?? '');
+                if ($entityId === '') {
+                    continue;
+                }
+                $fingerprint = hash('sha256', json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $existing = $storage->deltaStates($jobId, $entityType);
+                $known = null;
+                foreach ($existing as $state) {
+                    if ((string) $state['entity_id'] === $entityId) {
+                        $known = $state;
                         break;
                     }
-                    $out[$entityType] = array_merge($out[$entityType], $batch);
-                    $offset += count($batch);
                 }
-            }
-
-            return $out;
-        };
-        $allTarget = static function () use ($targetAdapter, $allSource): array {
-            $source = $allSource();
-            $out = [];
-            foreach ($source as $entityType => $items) {
-                $out[$entityType] = [];
-                foreach ($items as $item) {
-                    $id = (string) ($item['id'] ?? '');
-                    if ($id === '' || !$targetAdapter->exists($entityType, $id)) {
-                        continue;
-                    }
-                    $out[$entityType][] = $item;
+                if ($known === null || (string) ($known['fingerprint'] ?? '') !== $fingerprint) {
+                    $storage->saveDeltaChange($jobId, $scanId, 'incremental', $entityType, $entityId, $known === null ? 'create' : 'update', $fingerprint, $row);
+                    $changed[] = ['entity_type' => $entityType, 'entity_id' => $entityId, 'action' => $known === null ? 'create' : 'update'];
                 }
+                $storage->upsertDeltaState($jobId, $entityType, $entityId, $fingerprint, null, (string) ($row['updated_at'] ?? null), 0);
             }
-
-            return $out;
-        };
-
-        $relationDataset = static function () use ($allSource, $targetAdapter): array {
-            $rows = [];
-            foreach (($allSource()['tasks'] ?? []) as $task) {
-                $responsibleId = (string) ($task['responsible_id'] ?? '');
-                if ($responsibleId === '') {
-                    continue;
-                }
-                $rows[] = [
-                    'id' => 'task:' . (string) ($task['id'] ?? ''),
-                    'entity_type' => 'tasks',
-                    'source_exists' => true,
-                    'target_exists' => $targetAdapter->exists('users', $responsibleId),
-                ];
-            }
-
-            return $rows;
-        };
-
-        $attachmentDataset = static function () use ($allSource): array {
-            $rows = [];
-            foreach (($allSource()['files'] ?? []) as $file) {
-                $rows[] = [
-                    'id' => (string) ($file['id'] ?? ''),
-                    'parent_bound' => (bool) (($file['bound'] ?? true) === true),
-                    'source_checksum' => (string) ($file['checksum'] ?? sha1((string) ($file['id'] ?? ''))),
-                    'target_checksum' => (string) ($file['checksum'] ?? sha1((string) ($file['id'] ?? ''))),
-                ];
-            }
-
-            return $rows;
-        };
-
-        $sub = $argv[2] ?? 'help';
-        $jobForCommand = $argv[3] ?? null;
-
-        if ($sub === 'audit:source') {
-            $deep = in_array('--deep', $argv, true);
-            out((new SourceAuditEngine())->run($deep));
+            $storage->saveDeltaCursor($jobId, $entityType, date(DATE_ATOM), null, null, 'incremental');
         }
-
-        if (!in_array($sub, ['audit:source', 'strategy:generate', 'strategy:visualize', 'help'], true) && ($jobForCommand === null || $jobForCommand === '')) {
-            out(['error' => 'job_id_required', 'command' => 'migration ' . $sub, 'usage' => 'migration ' . $sub . ' <job_id>'], 1);
+        out(['job_id' => $jobId, 'scan_id' => $scanId, 'changes' => $changed, 'change_count' => count($changed)]);
+    case 'delta:execute':
+        $changes = $storage->pendingDeltaChanges($jobId);
+        $applied = 0;
+        foreach ($changes as $change) {
+            $payload = json_decode((string) ($change['payload'] ?? '{}'), true);
+            if (is_array($payload)) {
+                $targetAdapter->apply((string) $change['entity_type'], $payload);
+            }
+            $storage->markDeltaChangeApplied((int) $change['id']);
+            $applied++;
         }
-        if (!in_array($sub, ['audit:source', 'strategy:generate', 'strategy:visualize', 'help'], true)) {
-            $storage->assertJobExists((string) $jobForCommand);
+        out(['job_id' => $jobId, 'applied' => $applied, 'status' => $storage->deltaStatus($jobId)]);
+    case 'verify:counts':
+        out(['job_id' => $jobId, 'counts' => $storage->summary($jobId)]);
+    case 'verify:relations':
+    case 'verify:integrity':
+        $issues = [];
+        $tasks = recordsByAdapter($sourceAdapter, 'tasks.task', 100);
+        foreach ($tasks as $task) {
+            if ((string) ($task['responsible_id'] ?? '') === '') {
+                $issues[] = ['type' => 'task->user', 'entity_id' => (string) ($task['id'] ?? ''), 'issue' => 'missing_responsible'];
+            }
         }
-
-
-        
-        $continuousSync = new ContinuousSyncService($storage);
-
-$parseCliOptions = static function (array $args): array {
-            $opts = [];
-            foreach ($args as $arg) {
-                if (!str_starts_with((string) $arg, '--')) {
-                    continue;
-                }
-
-                [$k, $v] = array_pad(explode('=', substr((string) $arg, 2), 2), 2, 'true');
-                $opts[$k] = $v;
+        $deals = recordsByAdapter($sourceAdapter, 'crm.deal', 100);
+        foreach ($deals as $deal) {
+            if ((string) ($deal['COMPANY_ID'] ?? $deal['company_id'] ?? '') === '' && (string) ($deal['CONTACT_ID'] ?? $deal['contact_id'] ?? '') === '') {
+                $issues[] = ['type' => 'deal->company/contact', 'entity_id' => (string) ($deal['ID'] ?? $deal['id'] ?? ''), 'issue' => 'missing_link'];
             }
-
-            return $opts;
-        };
-
-        switch ($sub) {
-            case 'pause':
-                out($jobController->pause($jobForCommand));
-            case 'resume':
-                out($jobController->resume($jobForCommand));
-            case 'retry':
-                $entityRef = $argv[4] ?? '';
-                [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
-                out($jobController->retryEntity($jobForCommand, $entityType, $sourceId));
-            case 'repair':
-                out(['command' => 'migration repair', 'status' => 'queued']);
-            case 'diff':
-                $entityRef = $argv[4] ?? '';
-                [$entityType, $sourceId] = array_pad(explode(':', $entityRef, 2), 2, '');
-                out($diffEngine->compare($entityType, $sourceId, ['id' => $sourceId], ['id' => $sourceId]));
-            case 'verify:counts':
-                out(['job_id' => $jobForCommand, 'verify_depth' => 'structural', 'checked' => ['entity_counts'], 'not_checked' => ['relations', 'attachments', 'content', 'reconciliation']] + $consistencyEngine->verifyCounts($allSource(), $allTarget()));
-            case 'verify:relations':
-                out(['job_id' => $jobForCommand, 'verify_depth' => 'relation', 'checked' => ['relationships'], 'not_checked' => ['entity_counts', 'attachments', 'content', 'reconciliation']] + $consistencyEngine->verifyRelationships($relationDataset()));
-            case 'verify:attachments':
-                out(['job_id' => $jobForCommand, 'verify_depth' => 'content', 'checked' => ['attachments'], 'not_checked' => ['entity_counts', 'relationships', 'reconciliation']] + $consistencyEngine->verifyAttachments($attachmentDataset()));
-            case 'verify:full':
-                out($consistencyEngine->verifyFull([
-                    'source_entities' => $allSource(),
-                    'target_entities' => $allTarget(),
-                    'relations' => $relationDataset(),
-                    'attachments' => $attachmentDataset(),
-                    'source_custom_fields' => [],
-                    'target_custom_fields' => [],
-                    'source_pipeline_stages' => [],
-                    'target_pipeline_stages' => [],
-                ]));
-            case 'conflicts:list':
-                out(['job_id' => $jobForCommand, 'items' => $conflictResolutionEngine->list($jobForCommand), 'supported_policies' => $conflictResolutionEngine->supportedPolicies()]);
-            case 'conflicts:resolve':
-                $conflictId = (string) ($argv[4] ?? '');
-                $policy = (string) ($argv[5] ?? 'manual_resolution');
-                out($conflictResolutionEngine->resolve($jobForCommand, $conflictId, ['policy' => $policy, 'operator' => 'cli']));
-            case 'repair:plan':
-                out($repairEngine->plan($jobForCommand, [
-                    'relations' => $relationDataset(),
-                    'attachments' => $attachmentDataset(),
-                    'users' => array_map(static fn (array $u): array => ['id' => (string) ($u['id'] ?? ''), 'source_exists' => true, 'target_exists' => false], $allSource()['users'] ?? []),
-                    'pipeline_mismatches' => [],
-                ]));
-            case 'repair:apply':
-                out($repairEngine->apply($jobForCommand));
-            case 'delta:scan':
-                $entityFilter = (string) ($argv[4] ?? 'all');
-                $phase = 'incremental';
-                foreach (array_slice($argv, 4) as $arg) {
-                    if (str_starts_with((string) $arg, '--phase=')) {
-                        $phase = (string) substr((string) $arg, 8);
-                    }
-                }
-                $allowedPhases = ['initial_bulk', 'incremental', 'pre_cutover', 'final_cutover'];
-                if (!in_array($phase, $allowedPhases, true)) {
-                    out(['error' => 'Unsupported delta phase', 'phase' => $phase, 'allowed' => $allowedPhases], 1);
-                }
-
-                $scanId = 'scan_' . bin2hex(random_bytes(4));
-                $now = date(DATE_ATOM);
-                $batchSize = max(1, (int) ($config['batch_size'] ?? 100));
-                $entityTypes = $entityFilter === 'all' ? $sourceAdapter->entityTypes() : [$entityFilter];
-                $summary = ['scan_id' => $scanId, 'phase' => $phase, 'job_id' => $jobForCommand, 'entities' => []];
-
-                foreach ($entityTypes as $entityType) {
-                    $existingStateRows = $storage->deltaStates($jobForCommand, $entityType);
-                    $existing = [];
-                    foreach ($existingStateRows as $row) {
-                        $existing[(string) $row['entity_id']] = $row;
-                    }
-
-                    $seen = [];
-                    $offset = 0;
-                    $counts = ['created' => 0, 'updated' => 0, 'deleted' => 0, 'reassigned' => 0];
-                    $lastEntityId = null;
-                    $latestTs = null;
-                    while (true) {
-                        $batch = $sourceAdapter->fetch($entityType, $offset, $batchSize);
-                        if ($batch === []) {
-                            break;
-                        }
-
-                        foreach ($batch as $record) {
-                            $entityId = (string) ($record['id'] ?? '');
-                            if ($entityId === '') {
-                                continue;
-                            }
-                            $seen[$entityId] = true;
-                            $lastEntityId = $entityId;
-                            $updatedAt = (string) ($record['updated_at'] ?? $record['modified_at'] ?? $now);
-                            if ($latestTs === null || strtotime($updatedAt) > strtotime($latestTs)) {
-                                $latestTs = $updatedAt;
-                            }
-                            $ownerKey = (string) ($record['responsible_id'] ?? $record['assigned_to'] ?? $record['owner_id'] ?? $record['user_id'] ?? '');
-
-                            $fingerprintRecord = $record;
-                            unset($fingerprintRecord['updated_at'], $fingerprintRecord['modified_at']);
-                            $fingerprint = hash('sha256', (string) json_encode($fingerprintRecord, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                            $previous = $existing[$entityId] ?? null;
-                            $action = null;
-                            if ($previous === null || (int) ($previous['deleted'] ?? 0) === 1) {
-                                $action = 'created';
-                            } elseif (((string) ($previous['owner_key'] ?? '')) !== $ownerKey) {
-                                $action = 'reassigned';
-                            } elseif (((string) ($previous['fingerprint'] ?? '')) !== $fingerprint) {
-                                $action = 'updated';
-                            }
-
-                            if ($action !== null) {
-                                $counts[$action]++;
-                                $storage->saveDeltaChange($jobForCommand, $scanId, $phase, $entityType, $entityId, $action, $fingerprint, $record);
-                            }
-
-                            $storage->upsertDeltaState($jobForCommand, $entityType, $entityId, $fingerprint, $ownerKey, $updatedAt, 0);
-                        }
-
-                        $offset += count($batch);
-                    }
-
-                    foreach ($existing as $entityId => $prev) {
-                        if (!isset($seen[$entityId]) && (int) ($prev['deleted'] ?? 0) === 0) {
-                            $counts['deleted']++;
-                            $storage->saveDeltaChange($jobForCommand, $scanId, $phase, $entityType, $entityId, 'deleted', (string) ($prev['fingerprint'] ?? ''), ['id' => $entityId]);
-                            $storage->upsertDeltaState($jobForCommand, $entityType, $entityId, (string) ($prev['fingerprint'] ?? ''), (string) ($prev['owner_key'] ?? ''), (string) ($prev['updated_at'] ?? $now), 1);
-                        }
-                    }
-
-                    $watermark = hash('sha256', $jobForCommand . '|' . $entityType . '|' . $scanId . '|' . (string) ($latestTs ?? $now));
-                    $storage->saveDeltaCursor($jobForCommand, $entityType, $latestTs ?? $now, $lastEntityId, $watermark, $phase);
-                    $summary['entities'][$entityType] = $counts + ['last_entity_id' => $lastEntityId, 'last_sync_timestamp' => $latestTs ?? $now, 'watermark' => $watermark];
-                }
-                out($summary);
-            case 'delta:apply':
-                $scanId = $argv[4] ?? null;
-                $changes = $storage->pendingDeltaChanges($jobForCommand, is_string($scanId) ? $scanId : null);
-                $applied = ['created' => 0, 'updated' => 0, 'deleted' => 0, 'reassigned' => 0];
-                $processed = 0;
-
-                foreach ($changes as $change) {
-                    $payload = json_decode((string) ($change['payload'] ?? '{}'), true);
-                    if (!is_array($payload)) {
-                        $payload = [];
-                    }
-
-                    $action = (string) ($change['action'] ?? 'updated');
-                    $entityType = (string) ($change['entity_type'] ?? '');
-                    if (in_array($action, ['created', 'updated', 'reassigned'], true)) {
-                        $targetAdapter->upsert($entityType, $payload, false);
-                    }
-
-                    $storage->markDeltaChangeApplied((int) $change['id']);
-                    $applied[$action] = ($applied[$action] ?? 0) + 1;
-                    $processed++;
-                }
-
-                out(['job_id' => $jobForCommand, 'scan_id' => $scanId, 'processed' => $processed, 'applied' => $applied, 'idempotent' => true]);
-            case 'delta:status':
-                out(['job_id' => $jobForCommand] + $storage->deltaStatus($jobForCommand));
-            case 'reconcile':
-                $opts = $parseCliOptions(array_slice($argv, 4));
-                $entity = (string) ($opts['entity'] ?? 'tasks');
-                $strategy = (string) ($opts['strategy'] ?? 'balanced');
-                $limit = max(1, (int) ($opts['limit'] ?? ($config['reconciliation']['batch_size'] ?? 100)));
-                $offset = max(0, (int) ($opts['offset'] ?? 0));
-                $sample = max(0.01, min(1.0, (float) ($opts['sample'] ?? ($config['reconciliation']['sample_ratio'] ?? 1))));
-                $rateLimit = max(0, (int) ($opts['rate-limit'] ?? ($config['reconciliation']['rate_limit'] ?? 25)));
-
-                $engine = new ReconciliationEngine($storage, $sourceAdapter, $targetAdapter);
-                $result = $engine->reconcile($jobForCommand, $entity, $strategy, $limit, $offset, $sample, $rateLimit);
-
-                $reportDir = __DIR__ . '/../reports/reconciliation';
-                if (!is_dir($reportDir)) {
-                    mkdir($reportDir, 0777, true);
-                }
-                $stamp = date('Ymd_His');
-                $jsonPath = $reportDir . '/' . $jobForCommand . '_' . $entity . '_' . $stamp . '.json';
-                $htmlPath = $reportDir . '/' . $jobForCommand . '_' . $entity . '_' . $stamp . '.html';
-                file_put_contents($jsonPath, (string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $html = '<html><body><h1>Reconciliation report</h1><pre>' . htmlspecialchars((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</pre></body></html>';
-                file_put_contents($htmlPath, $html);
-
-                out($result + ['reports' => ['json' => $jsonPath, 'html' => $htmlPath]]);
-            case 'delta-sync':
-                $opts = $parseCliOptions(array_slice($argv, 4));
-                $entity = (string) ($opts['entity'] ?? 'tasks');
-                $since = (string) ($opts['since'] ?? date(DATE_ATOM, strtotime('-1 day')));
-                $batchSize = max(1, (int) ($opts['batch-size'] ?? 100));
-                $rateLimit = max(0, (int) ($opts['rate-limit'] ?? ($config['reconciliation']['rate_limit'] ?? 25)));
-                $dryRun = array_key_exists('dry-run', $opts) && (string) $opts['dry-run'] !== 'false';
-
-                $engine = new RuntimeDeltaSyncEngine($storage, $sourceAdapter, $targetAdapter);
-                $result = $engine->run($jobForCommand, $entity, $since, $batchSize, $rateLimit, $dryRun);
-
-                $reportDir = __DIR__ . '/../reports/delta';
-                if (!is_dir($reportDir)) {
-                    mkdir($reportDir, 0777, true);
-                }
-                $stamp = date('Ymd_His');
-                $jsonPath = $reportDir . '/' . $jobForCommand . '_' . $entity . '_' . $stamp . '.json';
-                $htmlPath = $reportDir . '/' . $jobForCommand . '_' . $entity . '_' . $stamp . '.html';
-                file_put_contents($jsonPath, (string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $html = '<html><body><h1>Delta report</h1><pre>' . htmlspecialchars((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</pre></body></html>';
-                file_put_contents($htmlPath, $html);
-
-                out($result + ['reports' => ['json' => $jsonPath, 'html' => $htmlPath]]);
-            case 'cutover-check':
-                $opts = $parseCliOptions(array_slice($argv, 4));
-                $sample = max(1, (int) ($opts['sample'] ?? 20));
-                $analyzer = new CutoverReadinessAnalyzer($storage, $sourceAdapter, $targetAdapter);
-                $result = $analyzer->check($jobForCommand, $sample);
-
-                $reportDir = __DIR__ . '/../reports/cutover';
-                if (!is_dir($reportDir)) {
-                    mkdir($reportDir, 0777, true);
-                }
-                $stamp = date('Ymd_His');
-                $jsonPath = $reportDir . '/' . $jobForCommand . '_' . $stamp . '.json';
-                $htmlPath = $reportDir . '/' . $jobForCommand . '_' . $stamp . '.html';
-                file_put_contents($jsonPath, (string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $html = '<html><body><h1>Cutover readiness report</h1><pre>' . htmlspecialchars((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</pre></body></html>';
-                file_put_contents($htmlPath, $html);
-
-                out($result + ['reports' => ['json' => $jsonPath, 'html' => $htmlPath]]);
-            case 'cutover-simulate':
-                $opts = $parseCliOptions(array_slice($argv, 4));
-                $entity = (string) ($opts['entity'] ?? 'tasks');
-                $since = (string) ($opts['since'] ?? date(DATE_ATOM, strtotime('-1 day')));
-                $reconcile = (new ReconciliationEngine($storage, $sourceAdapter, $targetAdapter))->reconcile($jobForCommand, $entity, 'deep', max(1, (int) ($opts['limit'] ?? 100)), 0, 1.0, max(1, (int) ($opts['rate-limit'] ?? 25)));
-                $delta = (new RuntimeDeltaSyncEngine($storage, $sourceAdapter, $targetAdapter))->run($jobForCommand, $entity, $since, max(1, (int) ($opts['batch-size'] ?? 50)), max(1, (int) ($opts['rate-limit'] ?? 25)), true);
-                $cutover = (new CutoverReadinessAnalyzer($storage, $sourceAdapter, $targetAdapter))->check($jobForCommand, max(1, (int) ($opts['sample'] ?? 20)));
-
-                $result = ['job_id' => $jobForCommand, 'mode' => 'simulation', 'reconciliation' => $reconcile, 'delta_sync' => $delta, 'queue_drain' => ['delta_queue_pending' => count($storage->pendingDeltaQueue($jobForCommand, null, 1000000))], 'final_integrity' => $cutover];
-
-                $reportDir = __DIR__ . '/../reports/cutover';
-                if (!is_dir($reportDir)) {
-                    mkdir($reportDir, 0777, true);
-                }
-                $stamp = date('Ymd_His');
-                $jsonPath = $reportDir . '/' . $jobForCommand . '_simulate_' . $stamp . '.json';
-                $htmlPath = $reportDir . '/' . $jobForCommand . '_simulate_' . $stamp . '.html';
-                file_put_contents($jsonPath, (string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $html = '<html><body><h1>Cutover simulation report</h1><pre>' . htmlspecialchars((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), ENT_QUOTES) . '</pre></body></html>';
-                file_put_contents($htmlPath, $html);
-
-                out($result + ['reports' => ['json' => $jsonPath, 'html' => $htmlPath]]);
-            case 'db:discover':
-            case 'db:schema-snapshot':
-                if ($sourceDbPdo === null) {
-                    out(['error' => 'source_db_not_configured', 'required_env' => ['BITRIX_SOURCE_DB_DSN', 'BITRIX_SOURCE_DB_USER', 'BITRIX_SOURCE_DB_PASSWORD']], 1);
-                }
-                $safety = new DbSafetyGuard(
-                    max(1, (int) ($config['db']['max_batch_size'] ?? 1000)),
-                    max(1, (int) ($config['db']['max_concurrency'] ?? 4)),
-                    max(0, (int) ($config['db']['throttle_us'] ?? 0)),
-                );
-                $runtimeMode = (string) ($config['runtime_mode'] ?? ($sourceDbPdo !== null ? 'mysql-assisted' : 'rest-only'));
-                $snapshot = (new MySqlSourceDiscovery(new PdoMySqlSourceReadAdapter($sourceDbPdo), $storage, $safety))->discover($jobForCommand, $runtimeMode);
-                out(['job_id' => $jobForCommand, 'runtime_mode' => $runtimeMode, 'snapshot' => $snapshot, 'idempotent' => true]);
-            case 'db:entity-graph':
-                $snapshot = $storage->latestSchemaSnapshot($jobForCommand);
-                if (!is_array($snapshot)) {
-                    out(['error' => 'schema_snapshot_missing', 'hint' => 'run migration db:discover <job_id> first'], 1);
-                }
-                $graph = (new EntityGraphBuilder($storage))->build($jobForCommand, $snapshot);
-                out(['job_id' => $jobForCommand, 'graph' => $graph, 'idempotent' => true]);
-            case 'db:extract':
-                if ($sourceDbPdo === null) {
-                    out(['error' => 'source_db_not_configured', 'required_env' => ['BITRIX_SOURCE_DB_DSN', 'BITRIX_SOURCE_DB_USER', 'BITRIX_SOURCE_DB_PASSWORD']], 1);
-                }
-                $entityType = (string) ($argv[4] ?? 'users');
-                $tableName = (string) ($argv[5] ?? $entityType);
-                $strategy = (string) ($argv[6] ?? 'auto_increment');
-                $batchSize = max(1, (int) ($argv[7] ?? ($config['db']['batch_size'] ?? 200)));
-                $safety = new DbSafetyGuard(
-                    max(1, (int) ($config['db']['max_batch_size'] ?? 1000)),
-                    max(1, (int) ($config['db']['max_concurrency'] ?? 4)),
-                    max(0, (int) ($config['db']['throttle_us'] ?? 0)),
-                );
-                $cursorManager = new CursorManager($storage);
-                $extractor = new MySqlSourceExtractor(new PdoMySqlSourceReadAdapter($sourceDbPdo), $storage, $cursorManager, $safety);
-                out($extractor->extract($jobForCommand, $entityType, $tableName, $strategy, $batchSize));
-            case 'db:cursors':
-                out(['job_id' => $jobForCommand, 'cursors' => (new CursorManager($storage))->list($jobForCommand), 'idempotent' => true]);
-            case 'verify:db':
-                $mode = (string) ($argv[4] ?? 'mixed');
-                $targetReader = $targetDbPdo !== null ? new PdoMySqlTargetReadAdapter($targetDbPdo) : null;
-                $verify = new DbVerificationEngine($storage, $targetReader);
-                out($verify->verify($jobForCommand, $mode));
-            case 'sync:start':
-                out($continuousSync->start($jobForCommand, $config));
-            case 'sync:stop':
-                out($continuousSync->stop($jobForCommand));
-            case 'sync:status':
-                out($continuousSync->status($jobForCommand, $config));
-            case 'sync:verify':
-                out($continuousSync->verify($jobForCommand, $allSource(), $allTarget()));
-            case 'sync:conflicts':
-                out(['job_id' => $jobForCommand, 'items' => $storage->listSyncConflicts($jobForCommand), 'policies' => ['source_priority', 'target_priority', 'last_write_wins', 'manual_resolution']]);
-            case 'sync:resolve':
-                $conflictId = (string) ($argv[4] ?? '');
-                $strategy = (string) ($argv[5] ?? 'manual_resolution');
-                if ($conflictId === '') {
-                    out(['error' => 'conflict_id_required', 'usage' => 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]'], 1);
-                }
-                $storage->resolveSyncConflict($conflictId, $strategy, ['operator' => 'cli']);
-                out(['job_id' => $jobForCommand, 'conflict_id' => $conflictId, 'status' => 'resolved', 'strategy' => $strategy]);
-            case 'sync:drift':
-                out(['job_id' => $jobForCommand, 'items' => $storage->listSyncDrift($jobForCommand)]);
-            case 'sync:policy':
-                out(['job_id' => $jobForCommand, 'policy' => $config['sync']['policy'] ?? [], 'filters' => $config['sync']['filters'] ?? [], 'window' => $config['sync']['window'] ?? []]);
-            case 'sync:service':
-                out($continuousSync->serviceTick($jobForCommand));
-            case 'dr:status':
-                out($continuousSync->drStatus($jobForCommand));
-
-            case 'health':
-                $monitor = new HealthMonitor(
-                    new RetryAnalyzer(),
-                    new QueueMonitor(),
-                    new WorkerWatchdog(),
-                    new RestThrottleDetector(),
-                    new FilesystemMonitor(),
-                    new AutoRecoveryEngine(),
-                );
-                $report = $monitor->check($storage->pdo(), $jobForCommand, false);
-                out([
-                    'title' => 'Migration Health Status',
-                    'job_id' => $jobForCommand,
-                    'workers' => $report['metrics']['workers'],
-                    'queue_depth' => $report['metrics']['queue_depth'],
-                    'retry_rate' => ($report['issues'][0]['retry_rate'] ?? 0) . '%',
-                    'api_latency' => $report['metrics']['api_latency_ms'] . 'ms',
-                    'health_score' => $report['health_score'] . '%',
-                    'issues' => $report['issues'],
-                ]);
-            case 'health:auto-recovery':
-                $enabled = !in_array('--disable', $argv, true);
-                $stmt = $storage->pdo()->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON CONFLICT(entity_type) DO UPDATE SET status=excluded.status, updated_at=CURRENT_TIMESTAMP');
-                $stmt->execute([
-                    'entity_type' => 'health_auto_recovery',
-                    'last_sync_time' => null,
-                    'records_processed' => 0,
-                    'status' => json_encode(['enabled' => $enabled, 'updated_at' => date(DATE_ATOM)], JSON_UNESCAPED_UNICODE),
-                ]);
-                out(['job_id' => $jobForCommand, 'auto_recovery' => $enabled ? 'enabled' : 'disabled']);
-            case 'health:issues':
-                $monitor = new HealthMonitor(
-                    new RetryAnalyzer(),
-                    new QueueMonitor(),
-                    new WorkerWatchdog(),
-                    new RestThrottleDetector(),
-                    new FilesystemMonitor(),
-                    new AutoRecoveryEngine(),
-                );
-                $report = $monitor->check($storage->pdo(), $jobForCommand, false);
-                out(['job_id' => $jobForCommand, 'issues' => $report['issues']]);
-            default:
-                out(['error' => 'Unknown migration subcommand', 'subcommand' => $sub], 1);
         }
-    }
-
-    $productionRoot = (string) ($options['root'] ?? '/opt/bitrix-migration');
-    $layout = new ProductionLayoutManager();
-    $layout->ensure($productionRoot);
-    $backupManager = new BackupManager();
-    $upgradeManager = new UpgradeManager($backupManager);
-    $configManager = new ConfigManager();
-
-    $transitionGuard = new LifecycleTransitionGuard($storage);
-
-    switch ($command) {
-        case 'backup:create':
-            $type = (string) ($options['type'] ?? 'runtime');
-            out($backupManager->create($productionRoot, $type));
-        case 'backup:list':
-            out(['ok' => true, 'backups' => $backupManager->list($productionRoot)]);
-        case 'backup:restore':
-            $backupId = (string) ($options['backup-id'] ?? ($positionals[0] ?? ''));
-            if ($backupId === '') {
-                out(['ok' => false, 'error' => 'backup_id_required'], 2);
+        $comments = recordsByAdapter($sourceAdapter, 'task.comments', 100);
+        foreach ($comments as $comment) {
+            if ((string) ($comment['TASK_ID'] ?? $comment['entity_id'] ?? '') === '') {
+                $issues[] = ['type' => 'comment->entity', 'entity_id' => (string) ($comment['ID'] ?? $comment['id'] ?? ''), 'issue' => 'orphan'];
             }
-            out($backupManager->restore($productionRoot, $backupId));
-        case 'restore':
-            $backupId = (string) ($options['backup-id'] ?? ($positionals[0] ?? ''));
-            if ($backupId === '') {
-                out(['ok' => false, 'error' => 'backup_id_required'], 2);
+        }
+        out(['job_id' => $jobId, 'status' => $issues === [] ? 'ok' : 'issues_found', 'issues' => $issues]);
+    case 'verify:files':
+        $files = recordsByAdapter($sourceAdapter, 'files', 100);
+        $issues = [];
+        foreach ($files as $file) {
+            $path = (string) ($file['PATH'] ?? $file['path'] ?? '');
+            if ($path === '') {
+                $issues[] = ['type' => 'missing_file_path', 'entity_id' => (string) ($file['ID'] ?? $file['id'] ?? ''), 'scope' => 'reference_verification'];
             }
-            out($backupManager->restore($productionRoot, $backupId));
-        case 'upgrade:check':
-            out($upgradeManager->check($productionRoot));
-        case 'upgrade:install':
-            $package = (string) ($options['package'] ?? '');
-            if ($package === '') {
-                out(['ok' => false, 'error' => 'package_required'], 2);
-            }
-            out($upgradeManager->install($productionRoot, $package, $storage->pdo()));
-        case 'upgrade:rollback':
-            out($upgradeManager->rollback($productionRoot));
-        case 'config:get':
-            out(['ok' => true, 'config' => $configManager->get($productionRoot . '/config/migration.yaml')]);
-        case 'config:set':
-            $key = (string) ($options['key'] ?? '');
-            $value = (string) ($options['value'] ?? '');
-            if ($key === '') {
-                out(['ok' => false, 'error' => 'key_required'], 2);
-            }
-            $parsed = is_numeric($value) ? (str_contains($value, '.') ? (float) $value : (int) $value) : (in_array($value, ['true', 'false'], true) ? $value === 'true' : $value);
-            $configManager->set($productionRoot . '/config/migration.yaml', $key, $parsed);
-            out(['ok' => true, 'key' => $key, 'value' => $parsed]);
-        case 'logs:rotate':
-            out((new LogRotationService())->rotate($productionRoot . '/runtime/logs'));
-        case 'system:repair':
-            out((new DisasterRecoveryService())->repair($storage->pdo()));
-        case 'system:recover':
-            out((new DisasterRecoveryService())->recover($storage->pdo()));
-        case 'uninstall':
-            $removed = [];
-            foreach (['runtime/jobs.db', 'runtime/queue', 'runtime/logs'] as $rel) {
-                $full = $productionRoot . '/' . $rel;
-                if (is_file($full)) {
-                    @unlink($full);
-                    $removed[] = $rel;
-                    continue;
-                }
-                if (is_dir($full)) {
-                    foreach (glob($full . '/*') ?: [] as $f) {
-                        @unlink($f);
-                    }
-                    $removed[] = $rel;
-                }
-            }
-            out(['ok' => true, 'removed' => $removed, 'kept' => ['storage/backups', 'storage/snapshots']]);
-
-        case 'plan':
-            out($runtime->plan($jobId));
-        case 'plan:show':
-            out($runtime->showPlan($jobId));
-        case 'plan:export':
-            $path = (string) ($argv[4] ?? ('.prototype/' . $jobId . '.plan.json'));
-            out($runtime->exportPlan($jobId, $path));
-        case 'dry-run':
-            if ($mode !== '' && $mode !== 'dry-run') {
-                out(['error' => 'invalid_mode_for_command', 'command' => 'dry-run', 'mode' => $mode, 'expected' => 'dry-run'], 2);
-            }
-            out($runtime->dryRun($jobId));
-        case 'execute':
-            if ($mode !== '' && $mode !== 'execute') {
-                out(['error' => 'invalid_mode_for_command', 'command' => 'execute', 'mode' => $mode, 'expected' => 'execute'], 2);
-            }
-            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::RUNNING, 'execute');
-            out($runtime->execute($jobId, false));
-        case 'pause':
-            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::PAUSED, 'pause');
-            $storage->setJobStatus($jobId, 'paused');
-            out(['job_id' => $jobId, 'status' => 'paused']);
-        case 'resume':
-            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::RUNNING, 'resume');
-            out($runtime->execute($jobId, true));
-        case 'retry':
-            out($runtime->execute($jobId, true) + ['mode' => 'retry']);
-        case 'reconcile':
-            out($runtime->execute($jobId, true) + ['mode' => 'reconcile']);
-        case 'verify':
-        case 'verify-only':
-            if ($mode !== '' && $mode !== 'verify') {
-                out(['error' => 'invalid_mode_for_command', 'command' => 'verify', 'mode' => $mode, 'expected' => 'verify'], 2);
-            }
-            $transitionGuard->assertTransition($jobId, \MigrationModule\Domain\Job\JobLifecycle::VERIFIED, 'verify');
-            out($runtime->verify($jobId));
-        case 'report':
-        case 'status':
-            if ($command === 'report' && $mode !== '' && $mode !== 'report') {
-                out(['error' => 'invalid_mode_for_command', 'command' => 'report', 'mode' => $mode, 'expected' => 'report'], 2);
-            }
-            out(['job_id' => $jobId, 'summary' => $storage->summary($jobId)]);
-        case 'checkpoint:list':
-        case 'checkpoint:show':
-            out($runtime->checkpointList($jobId));
-        case 'failures:list':
-            $stmt = $storage->pdo()->prepare('SELECT * FROM failure_events WHERE job_id=:job_id ORDER BY id');
-            $stmt->execute(['job_id' => $jobId]);
-            out(['job_id' => $jobId, 'failures' => $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []]);
-        case 'mapping:export':
-            $stmt = $storage->pdo()->prepare('SELECT * FROM entity_map WHERE job_id=:job_id ORDER BY entity_type, source_id');
-            $stmt->execute(['job_id' => $jobId]);
-            out(['job_id' => $jobId, 'mappings' => $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []]);
-        case 'files:verify':
-            $stmt = $storage->pdo()->prepare('SELECT * FROM file_transfer_map WHERE plan_id=(SELECT plan_id FROM migration_jobs WHERE job_id=:job_id LIMIT 1)');
-            $stmt->execute(['job_id' => $jobId]);
-            out(['job_id' => $jobId, 'files' => $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []]);
-        case 'system:check':
-            $client = null;
-            if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '')) {
-                $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
-            }
-            $base = (new SystemCheckService($client))->check($storagePath);
-            $hardening = (new HardeningService())->check($productionRoot);
-            out(['ok' => (($base['ok'] ?? false) && ($hardening['ok'] ?? false)), 'system' => $base, 'hardening' => $hardening]);
-        case 'migration:hypercare:start':
-            out(['command' => $command, 'status' => 'started', 'windows' => ['15 minutes', '1 hour', '6 hours', '24 hours', '3 days', '7 days', '30 days']]);
-        case 'migration:hypercare:scan':
-            out(['command' => $command, 'status' => 'completed', 'integrity_scan' => ['issues' => 0, 'integrity_score' => 1.0]]);
-        case 'migration:hypercare:reconcile':
-            out(['command' => $command, 'status' => 'completed', 'reconciliation' => ['resolved' => 0, 'queued_manual' => 0]]);
-        case 'migration:hypercare:report':
-            out(['command' => $command, 'status' => 'generated', 'formats' => ['pdf', 'json', 'html', 'docx']]);
-        case 'migration:hypercare:archive':
-            out(['command' => $command, 'status' => 'archived', 'scope' => ['migration plans', 'entity maps', 'logs', 'diff reports', 'integrity scans', 'cutover events', 'runbooks']]);
-
-        case 'hypercare:start':
-            $durationDays = (int) ($argv[2] ?? 14);
-            $scheduler = new HypercareScheduler();
-            out([
-                'command' => $command,
-                'status' => 'started',
-                'started_at' => (new DateTimeImmutable('now'))->format(DATE_ATOM),
-                'policy' => $scheduler->policy($durationDays),
-            ]);
-        case 'hypercare:status':
-            $startedAt = (string) ($argv[2] ?? (new DateTimeImmutable('-1 day'))->format(DATE_ATOM));
-            $duration = (int) ($argv[3] ?? 14);
-            out((new HypercareScheduler())->status($startedAt, $duration));
-        case 'hypercare:scan':
-            $source = [
-                'users' => [['id' => 'u1'], ['id' => 'u2']],
-                'contacts' => [['id' => 'c1']],
-                'deals' => [['id' => 'd1', 'contact_id' => 'c-missing']],
-                'files' => [['id' => 'f1', 'disk_object_id' => 'do1']],
-            ];
-            $target = [
-                'users' => [['id' => 'u1']],
-                'contacts' => [['id' => 'c1']],
-                'deals' => [['id' => 'd1', 'contact_id' => 'c-missing']],
-                'files' => [['id' => 'f1', 'disk_object_id' => 'do2']],
-            ];
-            $monitor = new PostMigrationHypercareMonitor();
-            $performance = (new PerformanceMonitor())->monitor([
-                'rest_latency_ms' => 1200,
-                'db_query_latency_ms' => 300,
-                'file_download_latency_ms' => 1900,
-                'worker_queue_delay_ms' => 800,
-                'api_rate_limit_utilization_pct' => 72,
-            ]);
-            $dashboard = (new HypercareDashboard())->build(
-                ['data_integrity_score' => 0.86, 'adoption_score' => 0.79, 'system_performance_score' => 0.88, 'error_rate' => 0.03],
-                ['active_users' => [18, 22, 25], 'task_activity' => [30, 35, 40], 'crm_operations' => [100, 105, 98], 'api_latency' => [800, 950, 1200], 'error_rates' => [0.02, 0.02, 0.03]],
-                ['entity_problems' => ['deals' => 1, 'users' => 1], 'departments_affected' => ['Sales'], 'severity_distribution' => ['critical' => 1, 'warning' => 2]],
-                ['high_usage_departments' => ['Support'], 'low_usage_departments' => ['Sales'], 'inactive_users' => ['u2']],
-            );
-            out([
-                'command' => $command,
-                'integrity' => $monitor->scan($source, $target),
-                'performance' => $performance,
-                'dashboard' => $dashboard,
-            ]);
-        case 'hypercare:repair':
-            $dryRun = (($argv[2] ?? '--dry-run') !== '--execute');
-            $issues = [[
-                'issue_id' => 'hc_issue_demo_1',
-                'entity_type' => 'deals',
-                'description' => 'Broken reference: deal contact not found.',
-            ]];
-            out((new IntegrityRepairEngine())->repair($issues, $dryRun));
-        case 'hypercare:adoption':
-            $old = [
-                'daily_active_users' => 110,
-                'active_users' => ['u1', 'u2', 'u3', 'u4'],
-            ];
-            $new = [
-                'daily_active_users' => 82,
-                'weekly_active_users' => 140,
-                'login_frequency' => 1.3,
-                'task_activity' => 320,
-                'crm_activity' => 210,
-                'file_access' => 170,
-                'feature_usage' => ['crm' => 210, 'tasks' => 320, 'groups' => 30, 'calendar' => 70, 'disk' => 170, 'smart_processes' => 22, 'automation' => 45],
-                'active_users' => ['u1', 'u3'],
-                'all_users' => ['u1', 'u2', 'u3', 'u4', 'u5'],
-                'department_activity' => [
-                    'Sales' => ['crm_usage_drop_pct' => 35.0, 'task_activity_drop_pct' => 20.0],
-                    'Marketing' => ['crm_usage_drop_pct' => 10.0, 'task_activity_drop_pct' => 50.0],
-                ],
-            ];
-            $analytics = (new PostMigrationAdoptionAnalyticsEngine())->analyze($old, $new);
-            $risk = (new AdoptionRiskEngine())->analyze($new['department_activity']);
-            out(array_merge($analytics, $risk));
-        case 'hypercare:optimize':
-            $signals = [
-                'unused_pipelines' => 2,
-                'duplicated_crm_fields' => 3,
-                'task_overload_users' => 6,
-                'inactive_groups' => 4,
-                'duplicate_files' => 120,
-                'unused_storage_mb' => 1024,
-            ];
-            out((new OptimizationEngine())->analyze($signals));
-        default:
-            out(['error' => 'Unknown command', 'command' => $command], 1);
-    }
-} catch (Throwable $e) {
-    $raw = $e->getMessage();
-    $decoded = json_decode($raw, true);
-    if (is_array($decoded)) {
-        out(['error' => $decoded], 1);
-    }
-
-    out(['error' => $raw, 'hint' => 'Prototype mode: run "php bin/migration-module validate" first.'], 1);
+        }
+        out(['job_id' => $jobId, 'checked' => count($files), 'issues' => $issues, 'bulk_transfer' => 'out_of_scope']);
+    default:
+        if (in_array($command, ['upgrade:check', 'upgrade:install', 'upgrade:rollback', 'reconciliation:run', 'baseline:plan'], true)) {
+            futureCommandResponse($command);
+        }
+        out(['error' => 'unknown_command', 'command' => $command], 2);
 }
