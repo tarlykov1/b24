@@ -6,6 +6,9 @@ declare(strict_types=1);
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
+use MigrationModule\Preflight\CheckContext;
+use MigrationModule\Preflight\CheckRegistry;
+use MigrationModule\Preflight\PreflightRunner;
 use MigrationModule\Prototype\Adapter\BitrixRestAdapter;
 use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
@@ -130,11 +133,40 @@ $jobId = (string) ($options['job-id'] ?? '');
 if ($command === 'help') {
     out(['commands' => [
         'validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'pause', 'retry', 'status', 'verify', 'report',
+        'preflight',
         'audit:run', 'audit:summary', 'audit:report', 'audit:velocity',
         'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute',
         'delta:plan', 'delta:execute',
         'verify:relations', 'verify:counts', 'verify:integrity', 'verify:files',
     ]]);
+}
+
+$runPreflight = static function (bool $strictMode = false) use ($config, $sourceAdapter, $targetAdapter, $storage): array {
+    $context = new CheckContext($config, $sourceAdapter, $targetAdapter, $storage->pdo());
+    $report = (new PreflightRunner(new CheckRegistry(), $context))->run($strictMode);
+
+    return $report->toArray() + ['exit_code' => $report->exitCode()];
+};
+
+if ($command === 'preflight') {
+    $strictMode = isset($options['strict']);
+    $report = $runPreflight($strictMode);
+    $exit = (int) ($report['exit_code'] ?? 2);
+    unset($report['exit_code']);
+    out($report, $exit);
+}
+
+if (in_array($command, ['create-job', 'execute'], true)) {
+    $strictMode = isset($options['strict']);
+    $preflight = $runPreflight($strictMode);
+    if (($preflight['status'] ?? 'blocked') === 'blocked') {
+        unset($preflight['exit_code']);
+        out([
+            'error' => 'preflight_blocked',
+            'message' => 'Migration action blocked by preflight safety validator.',
+            'preflight' => $preflight,
+        ], 2);
+    }
 }
 
 if (in_array($command, ['validate', 'config:validate'], true)) {
