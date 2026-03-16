@@ -1,0 +1,15 @@
+[Unit]
+Description=Bitrix Migration Worker Scheduler
+After=mysql.service network-online.target
+
+[Service]
+Type=simple
+User=bitrix-migration
+Group=bitrix-migration
+WorkingDirectory=/opt/bitrix-migration
+ExecStart=/usr/bin/php bin/migration-module migration:workers:status --job-id=health
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,188 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version VARCHAR(64) PRIMARY KEY,
+  checksum CHAR(64) NOT NULL,
+  applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS migration_lock (
+  id TINYINT PRIMARY KEY,
+  owner VARCHAR(128) NOT NULL,
+  acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id VARCHAR(64) PRIMARY KEY,
+  mode VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_jobs_status_created (status, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS job_steps (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  step_name VARCHAR(64) NOT NULL,
+  step_status VARCHAR(24) NOT NULL,
+  payload_json JSON NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_job_step (job_id, step_name),
+  KEY idx_job_steps_status (step_status),
+  CONSTRAINT fk_job_steps_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS queue (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  payload_json JSON NOT NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'pending',
+  lease_owner VARCHAR(128) NULL,
+  lease_expires_at TIMESTAMP NULL,
+  attempt INT NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_queue_claim (job_id, status, id),
+  KEY idx_queue_lease (lease_owner, lease_expires_at),
+  CONSTRAINT fk_queue_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS entity_map (
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  target_id VARCHAR(128) NOT NULL,
+  checksum CHAR(64) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  conflict_marker TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (job_id, entity_type, source_id),
+  KEY idx_entity_map_target (entity_type, target_id),
+  CONSTRAINT fk_entity_map_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_map (
+  job_id VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  target_id VARCHAR(128) NULL,
+  strategy VARCHAR(64) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (job_id, source_id),
+  CONSTRAINT fk_user_map_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS checkpoints (
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  last_source_id VARCHAR(128) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (job_id, entity_type),
+  CONSTRAINT fk_checkpoints_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  level VARCHAR(16) NOT NULL,
+  message TEXT NOT NULL,
+  context_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_logs_job_level (job_id, level, created_at),
+  CONSTRAINT fk_logs_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS diff_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  category VARCHAR(64) NOT NULL,
+  detail_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_diff_lookup (job_id, entity_type, source_id),
+  CONSTRAINT fk_diff_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS integrity_issues (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  issue VARCHAR(255) NOT NULL,
+  severity VARCHAR(16) NOT NULL DEFAULT 'warning',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_integrity_job (job_id, severity, created_at),
+  CONSTRAINT fk_integrity_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS retry_state (
+  queue_id BIGINT UNSIGNED PRIMARY KEY,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT NULL,
+  next_retry_at TIMESTAMP NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_retry_queue FOREIGN KEY (queue_id) REFERENCES queue(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS control_plane_settings (
+  `key` VARCHAR(128) PRIMARY KEY,
+  value_json JSON NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS wizard_install_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  session_id VARCHAR(64) NOT NULL,
+  step VARCHAR(64) NOT NULL,
+  step_status VARCHAR(24) NOT NULL,
+  payload_json JSON NULL,
+  warnings_json JSON NULL,
+  blockers_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_wizard_session_step (session_id, step)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS install_audit_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  session_id VARCHAR(64) NOT NULL,
+  actor VARCHAR(128) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  event_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_install_audit_session (session_id, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS delta_sync_cursors (
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  phase VARCHAR(32) NOT NULL,
+  cursor_value VARCHAR(255) NULL,
+  watermark VARCHAR(255) NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (job_id, entity_type, phase),
+  CONSTRAINT fk_delta_cursor_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cutover_plan_state (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  plan_status VARCHAR(32) NOT NULL,
+  plan_json JSON NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_cutover_plan_job (job_id),
+  CONSTRAINT fk_cutover_plan_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS hypercare_metrics (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  metric_name VARCHAR(64) NOT NULL,
+  metric_value DECIMAL(18,4) NOT NULL,
+  metric_tags_json JSON NULL,
+  measured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_hypercare_job_metric (job_id, metric_name, measured_at),
+  CONSTRAINT fk_hypercare_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;

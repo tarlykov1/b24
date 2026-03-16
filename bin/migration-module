@@ -10,6 +10,8 @@ use MigrationModule\Application\Consistency\ConflictResolutionEngine;
 use MigrationModule\Application\Consistency\RepairEngine;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Application\Readiness\SystemCheckService;
+use MigrationModule\Installation\ConfigLintService;
+use MigrationModule\Installation\InstallWizardService;
 use MigrationModule\Application\Execution\DistributedWorkerControlPlane;
 use MigrationModule\Application\Intelligence\MigrationIntelligenceEngine;
 use MigrationModule\Application\Throttling\AdaptiveRateLimiter;
@@ -80,6 +82,7 @@ use MigrationModule\HealthMonitor\QueueMonitor;
 use MigrationModule\HealthMonitor\RestThrottleDetector;
 use MigrationModule\HealthMonitor\RetryAnalyzer;
 use MigrationModule\HealthMonitor\WorkerWatchdog;
+use MigrationModule\Infrastructure\Persistence\MySqlMigrationRunner;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -224,6 +227,54 @@ if ($command === 'audit:velocity') {
     $report = (new ChangeVelocityAnalyzer())->analyze($pdo, $rest, $upload, (int) $opts['days'], (int) $opts['sample-size'], is_string($opts['entity']) ? $opts['entity'] : null);
 
     out($opts['output'] === 'json' ? $report : ['status' => 'ok', 'report' => 'reports/change_velocity_report.json']);
+}
+
+if (in_array($command, ['install:check', 'install:init-db', 'install:generate-config', 'install:validate', 'install:report', 'install:apply', 'config:lint', 'db:migrate', 'db:status'], true)) {
+    $installConfigPath = (string) ($options['install-config'] ?? 'apps/migration-module/config/templates/production.mysql-first.json');
+    $config = json_decode((string) file_get_contents($installConfigPath), true);
+    if (!is_array($config)) {
+        out(['ok' => false, 'error' => 'invalid_install_config', 'path' => $installConfigPath], 2);
+    }
+
+    $wizard = new InstallWizardService();
+    $dsn = (string) ($config['platform']['mysql_dsn'] ?? ($_ENV['MIGRATION_PLATFORM_DSN'] ?? ''));
+    $user = (string) ($config['platform']['mysql_user'] ?? ($_ENV['MIGRATION_PLATFORM_DB_USER'] ?? ''));
+    $pass = (string) ($config['platform']['mysql_password'] ?? ($_ENV['MIGRATION_PLATFORM_DB_PASSWORD'] ?? ''));
+
+    if ($command === 'install:check' || $command === 'install:validate' || $command === 'config:lint' || $command === 'install:report') {
+        $lint = (new ConfigLintService())->lint($config);
+        $code = $lint['ok'] ? 0 : 2;
+        out(['ok' => $lint['ok'], 'command' => $command, 'validation' => $lint], $code);
+    }
+
+    if ($dsn === '') {
+        out(['ok' => false, 'error' => 'platform_mysql_dsn_required'], 2);
+    }
+    $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
+
+    if ($command === 'install:init-db' || $command === 'db:migrate') {
+        $result = $wizard->initDb($pdo, __DIR__ . '/../db/mysql_platform_schema.sql');
+        out($result, ($result['ok'] ?? false) ? 0 : 2);
+    }
+
+    if ($command === 'db:status') {
+        out((new MySqlMigrationRunner($pdo))->status());
+    }
+
+    if ($command === 'install:generate-config') {
+        $outputPath = (string) ($options['output'] ?? 'config/generated-install-config.json');
+        out($wizard->generateConfig($config, $outputPath));
+    }
+
+    if ($command === 'install:apply') {
+        $lint = (new ConfigLintService())->lint($config);
+        if ($lint['ok'] !== true) {
+            out(['ok' => false, 'error' => 'install_blocked', 'validation' => $lint], 2);
+        }
+        $migration = $wizard->initDb($pdo, __DIR__ . '/../db/mysql_platform_schema.sql');
+        $generated = $wizard->generateConfig($config, (string) ($options['output'] ?? 'config/generated-install-config.json'));
+        out(['ok' => true, 'status' => 'installed', 'db' => $migration, 'config' => $generated]);
+    }
 }
 
 try {

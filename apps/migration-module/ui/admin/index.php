@@ -56,6 +56,7 @@ if (is_file(__DIR__ . '/../../../../.audit/migration_profile.json')) {
 <head><meta charset="utf-8"><title>Migration Admin</title></head>
 <body style="font-family:sans-serif;max-width:1000px;margin:20px auto">
 <h1>Bitrix24 Migration Admin</h1>
+<p><a href="install.php">Open Safe Installation Wizard</a></p>
 <?php if (!$loggedIn): ?>
 <form method="post" action="api.php/auth/login">
     <label>Admin password: <input type="password" name="password" required></label>

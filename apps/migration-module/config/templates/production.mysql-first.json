@@ -1,0 +1,24 @@
+{
+  "platform": {
+    "app_url": "https://target.example.com/migration",
+    "bind": "127.0.0.1:8088",
+    "mysql_dsn": "mysql:host=127.0.0.1;dbname=bitrix_migration;charset=utf8mb4",
+    "mysql_user": "bitrix_migration",
+    "mysql_password": "CHANGE_ME",
+    "install_dir": "/opt/bitrix-migration",
+    "log_dir": "/var/log/bitrix-migration",
+    "temp_dir": "/var/lib/bitrix-migration/tmp"
+  },
+  "source": {
+    "rest_url": "https://old.example.com/rest",
+    "db_dsn": "mysql:host=old-db.example.com;dbname=bitrix_source;charset=utf8mb4"
+  },
+  "target": {
+    "rest_url": "https://target.example.com/rest",
+    "db_dsn": "mysql:host=127.0.0.1;dbname=bitrix_target;charset=utf8mb4",
+    "write_enabled": false
+  },
+  "execution": {"workers": 2, "batch_size": 100},
+  "policy": {"delta_sync": "safe", "conflict_policy": "manual"},
+  "security": {"ip_allowlist": ["127.0.0.1"], "csrf": true}
+}
