@@ -11,7 +11,7 @@ $auth->startSession();
 $loggedIn = (bool) ($_SESSION['migration_admin_auth'] ?? false);
 $csrf = $auth->csrfToken();
 $steps = [
-    'welcome', 'environment', 'platform_db', 'source', 'target', 'filesystem', 'policy', 'resources', 'preflight', 'apply', 'post_validation',
+    'environment_check', 'source_bitrix_detection', 'target_bitrix_configuration', 'storage_configuration', 'worker_configuration', 'admin_user', 'finish',
 ];
 ?>
 <!doctype html>
