@@ -183,6 +183,83 @@ CREATE TABLE IF NOT EXISTS reconciliation_results (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE IF NOT EXISTS sync_state (
+  sync_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_id TEXT,
+  direction TEXT NOT NULL DEFAULT 'source_to_target',
+  last_synced_at TEXT,
+  last_hash TEXT,
+  source_version TEXT,
+  target_version TEXT,
+  sync_state TEXT NOT NULL DEFAULT 'pending',
+  mode TEXT NOT NULL DEFAULT 'hybrid',
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(job_id, entity_type, source_id, direction)
+);
+
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  conflict_id TEXT PRIMARY KEY,
+  sync_id TEXT,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_id TEXT,
+  conflict_type TEXT NOT NULL,
+  resolution_strategy TEXT NOT NULL DEFAULT 'manual_resolution',
+  conflict_payload TEXT NOT NULL,
+  resolution_payload TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sync_drift (
+  drift_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT,
+  target_id TEXT,
+  drift_category TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'medium',
+  drift_payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  detected_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sync_ledger (
+  sync_id TEXT NOT NULL,
+  ledger_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_id TEXT,
+  action TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  checksum_before TEXT,
+  checksum_after TEXT,
+  metadata_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sync_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  service_state TEXT NOT NULL,
+  sync_operations_total INTEGER NOT NULL DEFAULT 0,
+  sync_errors_total INTEGER NOT NULL DEFAULT 0,
+  sync_conflicts_total INTEGER NOT NULL DEFAULT 0,
+  sync_drift_total INTEGER NOT NULL DEFAULT 0,
+  replication_lag_seconds INTEGER NOT NULL DEFAULT 0,
+  queue_backlog INTEGER NOT NULL DEFAULT 0,
+  sync_health_score REAL NOT NULL DEFAULT 1,
+  measured_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS cutover_reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id TEXT NOT NULL,
