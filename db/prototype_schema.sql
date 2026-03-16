@@ -639,3 +639,23 @@ CREATE TABLE IF NOT EXISTS rollback_stages (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(rollback_id) REFERENCES rollback_runs(rollback_id)
 );
+;
+
+CREATE TABLE IF NOT EXISTS retries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL DEFAULT 1,
+  reason TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  metric_name TEXT NOT NULL,
+  metric_value REAL NOT NULL,
+  tags_json TEXT,
+  measured_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

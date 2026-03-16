@@ -73,6 +73,13 @@ use MigrationModule\Hypercare\HypercareScheduler;
 use MigrationModule\Hypercare\IntegrityRepairEngine;
 use MigrationModule\Hypercare\OptimizationEngine;
 use MigrationModule\Hypercare\PerformanceMonitor;
+use MigrationModule\HealthMonitor\AutoRecoveryEngine;
+use MigrationModule\HealthMonitor\FilesystemMonitor;
+use MigrationModule\HealthMonitor\HealthMonitor;
+use MigrationModule\HealthMonitor\QueueMonitor;
+use MigrationModule\HealthMonitor\RestThrottleDetector;
+use MigrationModule\HealthMonitor\RetryAnalyzer;
+use MigrationModule\HealthMonitor\WorkerWatchdog;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -265,7 +272,7 @@ try {
     );
 
     if ($command === 'help') {
-        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration sync:start <job_id>', 'migration sync:stop <job_id>', 'migration sync:status <job_id>', 'migration sync:verify <job_id>', 'migration sync:conflicts <job_id>', 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]', 'migration sync:drift <job_id>', 'migration sync:policy <job_id>', 'migration sync:service <job_id>', 'migration dr:status <job_id>', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>']]);
+        out(['commands' => ['validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'retry', 'reconcile', 'pause', 'verify', 'verify-only', 'report', 'status', 'checkpoint:list', 'checkpoint:show', 'failures:list', 'files:verify', 'mapping:export', 'system:check', 'audit:portal', 'audit:users', 'audit:tasks', 'audit:files', 'audit:crm', 'audit:permissions', 'audit:summary', 'audit:report', 'audit:run', 'audit:velocity --days=30 --sample-size=1000 --entity=tasks --output=json', 'migration audit:source [--deep]', 'migration strategy:generate', 'migration strategy:visualize', 'simulate', 'simulate:compare', 'simulate:scenario', 'simulate:capacity', 'simulate:failures', 'simulate:report', 'migration pause', 'migration resume', 'migration retry <entity_type>:<source_id>', 'migration repair', 'migration diff <entity_type>:<source_id>', 'migration verify:counts <job_id>', 'migration verify:relations <job_id>', 'migration verify:attachments <job_id>', 'migration verify:full <job_id>', 'migration db:discover <job_id>', 'migration db:schema-snapshot <job_id>', 'migration db:entity-graph <job_id>', 'migration db:extract <job_id> <entity> <table> [strategy] [batch_size]', 'migration db:cursors <job_id>', 'migration verify:db <job_id> [runtime|source_db|target_db|mixed]', 'migration conflicts:list <job_id>', 'migration conflicts:resolve <job_id> <conflict_id> <policy>', 'migration repair:plan <job_id>', 'migration repair:apply <job_id>', 'migration delta:scan <job_id> [entity_type|all] [--phase=initial_bulk|incremental|pre_cutover|final_cutover]', 'migration delta:apply <job_id> [scan_id]', 'migration delta:status <job_id>', 'migration reconcile <job_id> [--entity=users|crm|tasks|files] [--strategy=fast|balanced|deep] [--limit=100 --offset=0 --sample=1 --rate-limit=25]', 'migration delta-sync <job_id> [--since=2026-03-01 --entity=users --batch-size=100 --rate-limit=25 --dry-run]', 'migration sync:start <job_id>', 'migration sync:stop <job_id>', 'migration sync:status <job_id>', 'migration sync:verify <job_id>', 'migration sync:conflicts <job_id>', 'migration sync:resolve <job_id> <conflict_id> [source_priority|target_priority|last_write_wins|manual_resolution]', 'migration sync:drift <job_id>', 'migration sync:policy <job_id>', 'migration sync:service <job_id>', 'migration dr:status <job_id>', 'migration cutover-check <job_id>', 'migration cutover-simulate <job_id>', 'migration:hypercare:start', 'migration:hypercare:scan', 'migration:hypercare:reconcile', 'migration:hypercare:report', 'migration:hypercare:archive', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize', 'migration:workers:init <job_id> <queue_csv> <workers_csv>', 'migration:workers:status <job_id>', 'migration:workers:pause <job_id> [reason]', 'migration:workers:resume <job_id>', 'migration:workers:retry <job_id> <queue_name>', 'migration:workers:heartbeat <job_id> <worker_id> <ok|fail> [status_code]', 'cutover:plan --job-id=<id> --cutover-id=<id> [--dry-run] [--strict]', 'cutover:readiness --cutover-id=<id>', 'cutover:approve --cutover-id=<id> --scope=migration_operator --approver=<id>', 'cutover:window:check --cutover-id=<id> [--dry-run]', 'cutover:go-live --cutover-id=<id> [--dry-run] [--strict]', 'cutover:status --cutover-id=<id>', 'cutover:pause --cutover-id=<id>', 'cutover:resume --cutover-id=<id>', 'cutover:abort --cutover-id=<id>', 'cutover:rollback:prepare --cutover-id=<id>', 'cutover:rollback:execute --cutover-id=<id>', 'cutover:report --cutover-id=<id>', 'migration health --job-id=<id>', 'migration health:auto-recovery --job-id=<id> [--disable]', 'migration health:issues --job-id=<id>']]);
     }
 
     if ($command === 'validate') {
@@ -465,6 +472,51 @@ try {
             default:
                 out(['error' => 'Unknown workers command', 'command' => $command], 1);
         }
+    }
+
+
+    if (in_array($command, ['health', 'health:auto-recovery', 'health:issues'], true)) {
+        if ($jobId === null || $jobId === '') {
+            out(['error' => 'job_id_required', 'command' => 'migration ' . $command, 'usage' => 'migration ' . $command . ' --job-id=<id>'], 1);
+        }
+
+        $monitor = new HealthMonitor(
+            new RetryAnalyzer(),
+            new QueueMonitor(),
+            new WorkerWatchdog(),
+            new RestThrottleDetector(),
+            new FilesystemMonitor(),
+            new AutoRecoveryEngine(),
+        );
+
+        if ($command === 'health:auto-recovery') {
+            $enabled = !isset($options['disable']);
+            $stmt = $storage->pdo()->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON CONFLICT(entity_type) DO UPDATE SET status=excluded.status, updated_at=CURRENT_TIMESTAMP');
+            $stmt->execute([
+                'entity_type' => 'health_auto_recovery',
+                'last_sync_time' => null,
+                'records_processed' => 0,
+                'status' => json_encode(['enabled' => $enabled, 'updated_at' => date(DATE_ATOM)], JSON_UNESCAPED_UNICODE),
+            ]);
+
+            out(['job_id' => $jobId, 'auto_recovery' => $enabled ? 'enabled' : 'disabled']);
+        }
+
+        $report = $monitor->check($storage->pdo(), $jobId, false);
+        if ($command === 'health:issues') {
+            out(['job_id' => $jobId, 'issues' => $report['issues']]);
+        }
+
+        out([
+            'title' => 'Migration Health Status',
+            'job_id' => $jobId,
+            'workers' => $report['metrics']['workers'],
+            'queue_depth' => $report['metrics']['queue_depth'],
+            'retry_rate' => ($report['issues'][0]['retry_rate'] ?? 0) . '%',
+            'api_latency' => $report['metrics']['api_latency_ms'] . 'ms',
+            'health_score' => $report['health_score'] . '%',
+            'issues' => $report['issues'],
+        ]);
     }
 
     if ($jobId === null && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'system:check', 'hypercare:start', 'hypercare:status', 'hypercare:scan', 'hypercare:repair', 'hypercare:adoption', 'hypercare:optimize'], true) && !str_starts_with($command, 'audit:') && !str_starts_with($command, 'cutover:') && !str_starts_with($command, 'simulate') && $command !== 'migration' && !str_starts_with($command, 'migration:')) {
@@ -898,6 +950,48 @@ $parseCliOptions = static function (array $args): array {
                 out($continuousSync->serviceTick($jobForCommand));
             case 'dr:status':
                 out($continuousSync->drStatus($jobForCommand));
+
+            case 'health':
+                $monitor = new HealthMonitor(
+                    new RetryAnalyzer(),
+                    new QueueMonitor(),
+                    new WorkerWatchdog(),
+                    new RestThrottleDetector(),
+                    new FilesystemMonitor(),
+                    new AutoRecoveryEngine(),
+                );
+                $report = $monitor->check($storage->pdo(), $jobForCommand, false);
+                out([
+                    'title' => 'Migration Health Status',
+                    'job_id' => $jobForCommand,
+                    'workers' => $report['metrics']['workers'],
+                    'queue_depth' => $report['metrics']['queue_depth'],
+                    'retry_rate' => ($report['issues'][0]['retry_rate'] ?? 0) . '%',
+                    'api_latency' => $report['metrics']['api_latency_ms'] . 'ms',
+                    'health_score' => $report['health_score'] . '%',
+                    'issues' => $report['issues'],
+                ]);
+            case 'health:auto-recovery':
+                $enabled = !in_array('--disable', $argv, true);
+                $stmt = $storage->pdo()->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON CONFLICT(entity_type) DO UPDATE SET status=excluded.status, updated_at=CURRENT_TIMESTAMP');
+                $stmt->execute([
+                    'entity_type' => 'health_auto_recovery',
+                    'last_sync_time' => null,
+                    'records_processed' => 0,
+                    'status' => json_encode(['enabled' => $enabled, 'updated_at' => date(DATE_ATOM)], JSON_UNESCAPED_UNICODE),
+                ]);
+                out(['job_id' => $jobForCommand, 'auto_recovery' => $enabled ? 'enabled' : 'disabled']);
+            case 'health:issues':
+                $monitor = new HealthMonitor(
+                    new RetryAnalyzer(),
+                    new QueueMonitor(),
+                    new WorkerWatchdog(),
+                    new RestThrottleDetector(),
+                    new FilesystemMonitor(),
+                    new AutoRecoveryEngine(),
+                );
+                $report = $monitor->check($storage->pdo(), $jobForCommand, false);
+                out(['job_id' => $jobForCommand, 'issues' => $report['issues']]);
             default:
                 out(['error' => 'Unknown migration subcommand', 'subcommand' => $sub], 1);
         }

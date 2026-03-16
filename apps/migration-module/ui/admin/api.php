@@ -222,6 +222,7 @@ if ($path === '/audit/portal') {
         '/diff' => $api->diff($query),
         '/replay-preview' => $api->replayPreview($query),
         '/system-health' => $api->systemHealth($query),
+        '/health' => $api->migrationHealth($query['jobId'] ?? null),
         '/hypercare/status' => $api->hypercareStatus($query['jobId'] ?? null),
         '/hypercare/integrity-report' => $api->hypercareIntegrityReport($query['jobId'] ?? null),
         '/hypercare/adoption' => $api->hypercareAdoption($query['jobId'] ?? null),
