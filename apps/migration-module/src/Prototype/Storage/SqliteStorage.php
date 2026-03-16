@@ -218,6 +218,102 @@ final class SqliteStorage
         ]);
     }
 
+
+
+    public function saveReconciliationResult(string $jobId, string $entity, string $entityId, string $status, string $diffType, ?string $diffDetails, string $severity): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO reconciliation_results(job_id, entity, entity_id, status, diff_type, diff_details, severity) VALUES(:job_id,:entity,:entity_id,:status,:diff_type,:diff_details,:severity)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity' => $entity,
+            'entity_id' => $entityId,
+            'status' => $status,
+            'diff_type' => $diffType,
+            'diff_details' => $diffDetails,
+            'severity' => $severity,
+        ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function reconciliationResults(string $jobId, ?string $entity = null): array
+    {
+        $sql = 'SELECT * FROM reconciliation_results WHERE job_id=:job_id';
+        $params = ['job_id' => $jobId];
+        if ($entity !== null && $entity !== '') {
+            $sql .= ' AND entity=:entity';
+            $params['entity'] = $entity;
+        }
+        $sql .= ' ORDER BY id';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function enqueueDelta(string $jobId, string $entityType, string $entityId, string $changeType, array $payload): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO delta_queue(job_id, entity_type, entity_id, change_type, payload, status) VALUES(:job_id,:entity_type,:entity_id,:change_type,:payload,:status)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'change_type' => $changeType,
+            'payload' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'status' => 'pending',
+        ]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function pendingDeltaQueue(string $jobId, ?string $entityType = null, int $limit = 100): array
+    {
+        $sql = 'SELECT * FROM delta_queue WHERE job_id=:job_id AND status="pending"';
+        $params = ['job_id' => $jobId];
+        if ($entityType !== null && $entityType !== '') {
+            $sql .= ' AND entity_type=:entity_type';
+            $params['entity_type'] = $entityType;
+        }
+        $sql .= ' ORDER BY id LIMIT :limit';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue(':' . $k, $v);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function markDeltaQueueStatus(int $id, string $status): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE delta_queue SET status=:status, updated_at=CURRENT_TIMESTAMP WHERE id=:id');
+        $stmt->execute(['id' => $id, 'status' => $status]);
+    }
+
+    public function saveCutoverReport(string $jobId, string $status, array $report): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO cutover_reports(job_id, status, report_json) VALUES(:job_id,:status,:report_json)');
+        $stmt->execute([
+            'job_id' => $jobId,
+            'status' => $status,
+            'report_json' => (string) json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    public function latestCutoverReport(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT report_json FROM cutover_reports WHERE job_id=:job_id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
     public function saveDeltaChange(string $jobId, string $scanId, string $phase, string $entityType, string $entityId, string $action, string $fingerprint, array $payload): void
     {
         $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO delta_changes(job_id, scan_id, phase, entity_type, entity_id, action, fingerprint, payload, status) VALUES(:job_id,:scan_id,:phase,:entity_type,:entity_id,:action,:fingerprint,:payload,:status)');
