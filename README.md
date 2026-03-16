@@ -17,7 +17,7 @@ Core runtime components:
 - Deterministic execution engine (`PrototypeRuntime` + execution graph/batches)
 - SQLite runtime state (jobs, queue, mapping, checkpoints, logs, diff, integrity, state)
 - Audit/discovery integration (`audit:*`)
-- Delta planning/execution (`delta:*`)
+- Delta planning/execution (`delta:*`) including /upload baseline reuse and cutover checks
 - Verification (`verify:*` + report/status)
 - Bitrix REST adapter support when webhook credentials are provided.
 
@@ -37,7 +37,8 @@ php bin/migration-module execute --job-id=$JOB_ID
 - Lifecycle: `validate`, `config:validate`, `create-job`, `plan`, `plan:show`, `plan:export`, `dry-run`, `execute`, `resume`, `pause`, `retry`, `status`, `verify`, `report`
 - Audit/discovery: `audit:run`, `audit:summary`, `audit:report`, `audit:velocity`
 - Target preparation: `target:inspect`, `target:cleanup-plan`, `target:cleanup-execute`
-- Delta sync: `delta:plan`, `delta:execute`
+- Delta sync: `delta:plan`, `delta:execute`, `delta:scan`, `delta:report`, `delta:resume`, `delta:cutover-check`
+- Baseline /upload reuse: `baseline:index`, `baseline:status`, `baseline:verify`
 - Verification: `verify:counts`, `verify:relations`, `verify:integrity`, `verify:files`
 
 Unsupported platform commands are explicitly reserved for future extensions.
@@ -53,6 +54,20 @@ Unsupported platform commands are explicitly reserved for future extensions.
 ## Delta sync
 `delta:plan` computes changed/new entities after initial execution and queues deltas.
 `delta:execute` applies pending delta operations and marks them applied.
+
+
+## Baseline /upload reuse and delta sync engine
+For production migrations where `/upload` has already been copied once outside runtime, use:
+1. `baseline:index` to register imported target `/upload` as baseline manifest.
+2. `delta:scan` to classify NEW/MODIFIED/MISSING_ON_TARGET/TARGET_ONLY/CONFLICT/UNCHANGED_REUSABLE.
+3. `delta:plan --scan-id=<id>` to generate transfer actions (REUSE/COPY/VERIFY/REPLACE/SKIP/QUARANTINE/MANUAL_REVIEW).
+4. `delta:execute --plan-id=<id>` (or `delta:resume`) to apply resumable transfer batches.
+5. `delta:cutover-check --scan-id=<id>` for final readiness verdict before go-live.
+
+Safety defaults:
+- No blanket overwrite of `/upload`.
+- No deletion of target-only files by default.
+- Referenced files are prioritized during cutover risk evaluation.
 
 ## Verification
 - `verify:counts`: runtime count consistency
