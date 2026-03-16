@@ -659,3 +659,10 @@ CREATE TABLE IF NOT EXISTS metrics (
   tags_json TEXT,
   measured_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS preflight_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT NOT NULL,
+  config_hash TEXT NOT NULL,
+  result_json TEXT NOT NULL
+);

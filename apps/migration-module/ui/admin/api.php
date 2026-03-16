@@ -11,6 +11,11 @@ use MigrationModule\Infrastructure\Http\AdminAuth;
 use MigrationModule\Infrastructure\Http\OperationsConsoleApi;
 use MigrationModule\Installation\ConfigLintService;
 use MigrationModule\Installation\InstallWizardService;
+use MigrationModule\Preflight\CheckContext;
+use MigrationModule\Preflight\CheckRegistry;
+use MigrationModule\Preflight\PreflightRunner;
+use MigrationModule\Prototype\Adapter\StubSourceAdapter;
+use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 
 $vendorAutoload = __DIR__ . '/../../../../vendor/autoload.php';
 if (is_file($vendorAutoload)) {
@@ -101,6 +106,38 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     exit;
 }
 
+
+
+if ($path === '/preflight' || $path === '/api/preflight') {
+    $configPath = (string) ($query['config'] ?? __DIR__ . '/../../../../config/migration.yaml');
+    $config = [];
+    if (is_file($configPath)) {
+        $lines = file($configPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $section = null;
+        foreach ($lines as $line) {
+            $line = rtrim((string) $line);
+            if ($line === '' || str_starts_with(trim($line), '#')) {
+                continue;
+            }
+            if (preg_match('/^([a-zA-Z0-9_]+):\s*$/', $line, $m) === 1) {
+                $section = $m[1];
+                $config[$section] = [];
+                continue;
+            }
+            if (preg_match('/^\s{2}([a-zA-Z0-9_]+):\s*(.+)$/', $line, $m) === 1 && $section !== null) {
+                $config[$section][$m[1]] = trim((string) $m[2], " \"'");
+
+            }
+        }
+    }
+
+    $strict = (bool) filter_var((string) ($query['strict'] ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    $context = new CheckContext($config, new StubSourceAdapter(), new StubTargetAdapter(), null);
+    $report = (new PreflightRunner(new CheckRegistry(), $context))->run($strict);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($report->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 if (str_starts_with($path, '/install/')) {
     $wizard = new InstallWizardService();
