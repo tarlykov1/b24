@@ -63,6 +63,16 @@ final class SqliteStorage
         ], JSON_UNESCAPED_UNICODE));
     }
 
+
+    public function jobStatus(string $jobId): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT status FROM jobs WHERE id=:job_id LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $status = $stmt->fetchColumn();
+
+        return is_string($status) ? $status : null;
+    }
+
     public function setJobStatus(string $jobId, string $status): void
     {
         $this->assertJobExists($jobId);

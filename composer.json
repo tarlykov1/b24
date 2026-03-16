@@ -11,7 +11,7 @@
         }
     },
     "scripts": {
-        "test": "php tests/PrototypeTest.php",
+        "test": "php tests/PrototypeTest.php && php tests/CliContractTest.php && php tests/OperationalApiTruthfulnessTest.php",
         "cli:help": "php bin/migration-module help",
         "cli:validate": "php bin/migration-module validate",
         "cli:dry-run": "php bin/migration-module dry-run",
