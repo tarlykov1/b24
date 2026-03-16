@@ -1,0 +1,5 @@
+workers:
+  count: 4
+  batch_size: 100
+  rate_limit_per_second: 25
+  queue_poll_interval_ms: 500

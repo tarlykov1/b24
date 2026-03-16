@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS migration_integrity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  issue_code TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

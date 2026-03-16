@@ -326,3 +326,77 @@ php bin/migration-module audit:velocity --days=30 --sample-size=1000 --output=js
 - Недопустимые переходы блокируются с machine-readable ошибкой `invalid_job_transition`.
 - `status/report/verify/resume` не создают новый job неявно; для отсутствующего `job_id` возвращается `job_not_found`.
 - Shallow/full verify разделены по `verify_depth`; output явно содержит `checked/not_checked/limitations`.
+
+## Production Installation
+
+```bash
+php bin/migration-module system:check --root=/opt/bitrix-migration
+php bin/migration-module config:set --root=/opt/bitrix-migration --key=workers.worker_count --value=4
+php bin/migration-module config:validate --root=/opt/bitrix-migration
+```
+
+The CLI creates/maintains production layout under `/opt/bitrix-migration`.
+
+## Web Installer
+
+Use `/migration/install` (mapped to `apps/migration-module/ui/admin/install.php`) for guided setup:
+
+1. Environment check
+2. Source Bitrix detection
+3. Target Bitrix configuration
+4. Storage configuration
+5. Worker configuration
+6. Admin account
+7. Finish (writes config)
+
+## CLI Commands
+
+New production commands:
+
+- `system:check`
+- `backup:create`, `backup:list`, `backup:restore`
+- `restore`
+- `upgrade:check`, `upgrade:install`, `upgrade:rollback`
+- `config:get`, `config:set`, `config:validate`
+- `logs:rotate`
+- `system:repair`, `system:recover`
+- `uninstall`
+
+## Backup & Restore
+
+```bash
+php bin/migration-module backup:create --root=/opt/bitrix-migration
+php bin/migration-module backup:list --root=/opt/bitrix-migration
+php bin/migration-module restore --root=/opt/bitrix-migration --backup-id=<id>
+```
+
+## Upgrade Manager
+
+```bash
+php bin/migration-module upgrade:check --root=/opt/bitrix-migration
+php bin/migration-module upgrade:install --root=/opt/bitrix-migration --package=upgrade-1.1.0.json
+php bin/migration-module upgrade:rollback --root=/opt/bitrix-migration
+```
+
+## Security Hardening
+
+- Session-based admin auth
+- CSRF checks for POST endpoints
+- Runtime hardening checks in `system:check`
+- Locking and typed confirmation for dangerous actions
+
+## Monitoring
+
+Health endpoints:
+
+- `/health`
+- `/ready`
+- `/metrics`
+
+## Disaster Recovery
+
+```bash
+php bin/migration-module system:repair --job-id=<id>
+php bin/migration-module system:recover --job-id=<id>
+php bin/migration-module uninstall --root=/opt/bitrix-migration
+```
