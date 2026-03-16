@@ -159,6 +159,38 @@ CREATE TABLE IF NOT EXISTS delta_changes (
   UNIQUE(job_id, scan_id, entity_type, entity_id, action)
 );
 
+CREATE TABLE IF NOT EXISTS delta_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  change_type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reconciliation_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  diff_type TEXT NOT NULL,
+  diff_details TEXT,
+  severity TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cutover_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  report_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS migration_conflicts (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,
