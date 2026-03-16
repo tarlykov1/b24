@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
+use MigrationModule\Application\DeltaUpload\BaselineDeltaServices;
 use MigrationModule\Audit\ChangeVelocityAnalyzer;
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
 use MigrationModule\Preflight\CheckContext;
@@ -103,8 +104,8 @@ $command = $argv[1] ?? 'help';
 $parsed = parseArgs($argv);
 $options = $parsed['options'];
 
-$futureNamespaces = ['snapshot:', 'baseline:', 'reconciliation:', 'conflicts:', 'watermarks:'];
-if (in_array($command, ['snapshot', 'baseline', 'reconciliation', 'conflicts', 'watermarks'], true)) {
+$futureNamespaces = ['snapshot:', 'reconciliation:', 'conflicts:', 'watermarks:'];
+if (in_array($command, ['snapshot', 'reconciliation', 'conflicts', 'watermarks'], true)) {
     futureCommandResponse($command);
 }
 foreach ($futureNamespaces as $ns) {
@@ -128,6 +129,7 @@ if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '')
 }
 
 $runtime = new PrototypeRuntime($storage, $sourceAdapter, $targetAdapter, new IdConflictResolutionPolicy(), new UserHandlingPolicy(), $config);
+$uploadDelta = new BaselineDeltaServices($storage);
 $jobId = (string) ($options['job-id'] ?? '');
 
 if ($command === 'help') {
@@ -137,6 +139,7 @@ if ($command === 'help') {
         'audit:run', 'audit:summary', 'audit:report', 'audit:velocity',
         'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute',
         'delta:plan', 'delta:execute',
+        'baseline:index', 'baseline:status', 'baseline:verify', 'delta:scan', 'delta:resume', 'delta:report', 'delta:cutover-check',
         'verify:relations', 'verify:counts', 'verify:integrity', 'verify:files',
     ]]);
 }
@@ -251,6 +254,9 @@ switch ($command) {
         }
         out(['plan' => $plan, 'mode' => $command === 'target:inspect' ? 'inspect' : 'plan']);
     case 'delta:plan':
+        if (isset($options['scan-id'])) {
+            out($uploadDelta->buildTransferPlan($jobId, (string) $options['scan-id'], (string) ($options['policy'] ?? 'balanced')));
+        }
         $scanId = 'delta_' . bin2hex(random_bytes(4));
         $changed = [];
         foreach ($sourceAdapter->entityTypes() as $entityType) {
@@ -279,6 +285,11 @@ switch ($command) {
         }
         out(['job_id' => $jobId, 'scan_id' => $scanId, 'changes' => $changed, 'change_count' => count($changed)]);
     case 'delta:execute':
+        if (isset($options['plan-id'])) {
+            $sourceRoot = (string) ($options['source-root'] ?? ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload/source'));
+            $targetRoot = (string) ($options['target-root'] ?? ($_ENV['BITRIX_TARGET_UPLOAD_PATH'] ?? getenv('BITRIX_TARGET_UPLOAD_PATH') ?: '/upload/target'));
+            out($uploadDelta->executeTransferPlan((string) $options['plan-id'], $sourceRoot, $targetRoot, isset($options['dry-run']), (int) ($options['limit'] ?? 1000)));
+        }
         $changes = $storage->pendingDeltaChanges($jobId);
         $applied = 0;
         foreach ($changes as $change) {
@@ -290,6 +301,59 @@ switch ($command) {
             $applied++;
         }
         out(['job_id' => $jobId, 'applied' => $applied, 'status' => $storage->deltaStatus($jobId)]);
+
+    case 'baseline:index':
+        $sourceRoot = (string) ($options['source-root'] ?? ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload/source'));
+        $targetRoot = (string) ($options['target-root'] ?? ($_ENV['BITRIX_TARGET_UPLOAD_PATH'] ?? getenv('BITRIX_TARGET_UPLOAD_PATH') ?: '/upload/target'));
+        $mode = (string) ($options['verification-mode'] ?? 'fast');
+        out($uploadDelta->baselineIndex($jobId, $sourceRoot, $targetRoot, (int) ($options['chunk-size'] ?? 500), $mode));
+    case 'baseline:status':
+        $baselineId = (string) ($options['baseline-id'] ?? '');
+        out(['baseline' => $baselineId === '' ? null : $storage->baselineSnapshot($baselineId)]);
+    case 'baseline:verify':
+        $baselineId = (string) ($options['baseline-id'] ?? '');
+        $base = $baselineId === '' ? null : $storage->baselineSnapshot($baselineId);
+        out(['baseline_id' => $baselineId, 'status' => $base['status'] ?? 'missing', 'indexed_files' => $base['indexed_files'] ?? 0]);
+    case 'delta:scan':
+        $baselineId = (string) ($options['baseline-id'] ?? '');
+        if ($baselineId === '') {
+            out(['error' => 'baseline_id_required'], 2);
+        }
+        $refs = [];
+        if (isset($options['refs-json']) && is_file((string) $options['refs-json'])) {
+            $refs = json_decode((string) file_get_contents((string) $options['refs-json']), true) ?: [];
+        }
+        $refPaths = [];
+        foreach ($refs as $r) {
+            if (is_array($r) && isset($r['path'])) {
+                $refPaths[] = (string) $r['path'];
+            }
+        }
+        $sourceRoot = (string) ($options['source-root'] ?? ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload/source'));
+        $targetRoot = (string) ($options['target-root'] ?? ($_ENV['BITRIX_TARGET_UPLOAD_PATH'] ?? getenv('BITRIX_TARGET_UPLOAD_PATH') ?: '/upload/target'));
+        out($uploadDelta->deltaScan($jobId, $baselineId, $sourceRoot, $targetRoot, $refPaths));
+    case 'delta:resume':
+        $planId = (string) ($options['plan-id'] ?? '');
+        if ($planId === '') {
+            out(['error' => 'plan_id_required'], 2);
+        }
+        $sourceRoot = (string) ($options['source-root'] ?? ($_ENV['BITRIX_UPLOAD_PATH'] ?? getenv('BITRIX_UPLOAD_PATH') ?: '/upload/source'));
+        $targetRoot = (string) ($options['target-root'] ?? ($_ENV['BITRIX_TARGET_UPLOAD_PATH'] ?? getenv('BITRIX_TARGET_UPLOAD_PATH') ?: '/upload/target'));
+        out($uploadDelta->executeTransferPlan($planId, $sourceRoot, $targetRoot, isset($options['dry-run']), (int) ($options['limit'] ?? 1000)));
+    case 'delta:report':
+        $scanId = (string) ($options['scan-id'] ?? '');
+        if ($scanId === '') {
+            out(['error' => 'scan_id_required'], 2);
+        }
+        $counts = $storage->deltaScanCounts($scanId);
+        $issues = $storage->reconciliationIssuesByScan($scanId);
+        out(['scan_id' => $scanId, 'counts' => $counts, 'issues' => $issues]);
+    case 'delta:cutover-check':
+        $scanId = (string) ($options['scan-id'] ?? '');
+        if ($scanId === '') {
+            out(['error' => 'scan_id_required'], 2);
+        }
+        out($uploadDelta->cutoverCheck($jobId, $scanId, (int) ($options['pass'] ?? 1)));
     case 'verify:counts':
         out(['job_id' => $jobId, 'counts' => $storage->summary($jobId)]);
     case 'verify:relations':

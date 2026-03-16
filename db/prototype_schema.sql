@@ -268,6 +268,109 @@ CREATE TABLE IF NOT EXISTS cutover_reports (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS upload_baseline_snapshots (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  source_root TEXT NOT NULL,
+  target_root TEXT NOT NULL,
+  verification_mode TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  indexed_files INTEGER NOT NULL DEFAULT 0,
+  indexed_bytes INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS upload_baseline_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  baseline_id TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  mtime_epoch INTEGER NOT NULL,
+  checksum_sha256 TEXT,
+  fingerprint TEXT NOT NULL,
+  scan_ts TEXT NOT NULL,
+  source_present INTEGER NOT NULL,
+  target_present INTEGER NOT NULL,
+  reuse_eligible INTEGER NOT NULL,
+  conflict_flag INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(baseline_id, relative_path)
+);
+CREATE INDEX IF NOT EXISTS idx_upload_baseline_files_baseline_path ON upload_baseline_files(baseline_id, relative_path);
+
+CREATE TABLE IF NOT EXISTS upload_delta_scans (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  baseline_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  summary_json TEXT,
+  options_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS upload_delta_scan_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scan_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  source_size INTEGER,
+  target_size INTEGER,
+  source_mtime INTEGER,
+  target_mtime INTEGER,
+  referenced INTEGER NOT NULL DEFAULT 0,
+  confidence TEXT NOT NULL,
+  UNIQUE(scan_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_upload_delta_scan_items_scan_status ON upload_delta_scan_items(scan_id, status);
+
+CREATE TABLE IF NOT EXISTS upload_transfer_plans (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  scan_id TEXT NOT NULL,
+  policy TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS upload_transfer_plan_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  action TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  confidence TEXT NOT NULL,
+  overwrite_policy TEXT NOT NULL,
+  verification_mode TEXT NOT NULL,
+  dependency_info TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  result_note TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_upload_transfer_plan_items_plan_status ON upload_transfer_plan_items(plan_id, status);
+
+CREATE TABLE IF NOT EXISTS upload_reconciliation_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scan_id TEXT NOT NULL,
+  issue_type TEXT NOT NULL,
+  path TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  payload_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS upload_cutover_readiness_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  scan_id TEXT NOT NULL,
+  verdict TEXT NOT NULL,
+  report_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS migration_conflicts (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,

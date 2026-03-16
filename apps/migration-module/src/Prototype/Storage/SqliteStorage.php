@@ -782,6 +782,183 @@ final class SqliteStorage
         return $row === false ? null : $row;
     }
 
+    public function createBaselineSnapshot(string $jobId, string $sourceRoot, string $targetRoot, string $verificationMode): string
+    {
+        $id = 'base_' . bin2hex(random_bytes(4));
+        $stmt = $this->pdo->prepare('INSERT INTO upload_baseline_snapshots(id, job_id, source_root, target_root, verification_mode, status) VALUES(:id,:job_id,:source_root,:target_root,:verification_mode,:status)');
+        $stmt->execute(['id' => $id, 'job_id' => $jobId, 'source_root' => $sourceRoot, 'target_root' => $targetRoot, 'verification_mode' => $verificationMode, 'status' => 'running']);
+
+        return $id;
+    }
+
+    /** @param array<int,array<string,mixed>> $rows */
+    public function insertBaselineFiles(string $baselineId, array $rows): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO upload_baseline_files(baseline_id, relative_path, size_bytes, mtime_epoch, checksum_sha256, fingerprint, scan_ts, source_present, target_present, reuse_eligible, conflict_flag) VALUES(:baseline_id,:relative_path,:size_bytes,:mtime_epoch,:checksum_sha256,:fingerprint,:scan_ts,:source_present,:target_present,:reuse_eligible,:conflict_flag)');
+        foreach ($rows as $row) {
+            $stmt->execute(['baseline_id' => $baselineId] + $row);
+        }
+    }
+
+    public function completeBaselineSnapshot(string $baselineId, int $files, int $bytes): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE upload_baseline_snapshots SET status=:status, indexed_files=:files, indexed_bytes=:bytes, completed_at=CURRENT_TIMESTAMP WHERE id=:id');
+        $stmt->execute(['id' => $baselineId, 'status' => 'completed', 'files' => $files, 'bytes' => $bytes]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function baselineSnapshot(string $baselineId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM upload_baseline_snapshots WHERE id=:id LIMIT 1');
+        $stmt->execute(['id' => $baselineId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    public function baselineFilesMap(string $baselineId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM upload_baseline_files WHERE baseline_id=:baseline_id');
+        $stmt->execute(['baseline_id' => $baselineId]);
+        $out = [];
+        foreach (($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+            $out[(string) $row['relative_path']] = $row;
+        }
+
+        return $out;
+    }
+
+    /** @param array<string,mixed> $options */
+    public function createDeltaScan(string $jobId, string $baselineId, array $options): string
+    {
+        $id = 'scan_' . bin2hex(random_bytes(4));
+        $stmt = $this->pdo->prepare('INSERT INTO upload_delta_scans(id, job_id, baseline_id, status, options_json) VALUES(:id,:job_id,:baseline_id,:status,:options_json)');
+        $stmt->execute(['id' => $id, 'job_id' => $jobId, 'baseline_id' => $baselineId, 'status' => 'running', 'options_json' => json_encode($options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+
+        return $id;
+    }
+
+    /** @param array<int,array<string,mixed>> $items */
+    public function insertDeltaScanItems(string $scanId, array $items): void
+    {
+        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO upload_delta_scan_items(scan_id, path, status, reason, source_size, target_size, source_mtime, target_mtime, referenced, confidence) VALUES(:scan_id,:path,:status,:reason,:source_size,:target_size,:source_mtime,:target_mtime,:referenced,:confidence)');
+        foreach ($items as $item) {
+            $stmt->execute(['scan_id' => $scanId] + $item);
+        }
+    }
+
+    /** @param array<string,int> $counts */
+    public function completeDeltaScan(string $scanId, array $counts): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE upload_delta_scans SET status=:status, summary_json=:summary_json, completed_at=CURRENT_TIMESTAMP WHERE id=:id');
+        $stmt->execute(['id' => $scanId, 'status' => 'completed', 'summary_json' => json_encode($counts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    /** @return array<string,int> */
+    public function deltaScanCounts(string $scanId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT summary_json FROM upload_delta_scans WHERE id=:id LIMIT 1');
+        $stmt->execute(['id' => $scanId]);
+        $raw = (string) ($stmt->fetchColumn() ?: '{}');
+        $data = json_decode($raw, true);
+
+        return is_array($data) ? $data : [];
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function deltaScanItems(string $scanId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM upload_delta_scan_items WHERE scan_id=:scan_id ORDER BY path');
+        $stmt->execute(['scan_id' => $scanId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    public function deltaScanItemsMap(string $scanId): array
+    {
+        $out = [];
+        foreach ($this->deltaScanItems($scanId) as $item) {
+            $out[(string) $item['path']] = $item;
+        }
+
+        return $out;
+    }
+
+    public function createTransferPlan(string $jobId, string $scanId, string $policy): string
+    {
+        $id = 'plan_' . bin2hex(random_bytes(4));
+        $stmt = $this->pdo->prepare('INSERT INTO upload_transfer_plans(id, job_id, scan_id, policy, status) VALUES(:id,:job_id,:scan_id,:policy,:status)');
+        $stmt->execute(['id' => $id, 'job_id' => $jobId, 'scan_id' => $scanId, 'policy' => $policy, 'status' => 'planned']);
+
+        return $id;
+    }
+
+    /** @param array<int,array<string,mixed>> $items */
+    public function insertTransferPlanItems(string $planId, array $items): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO upload_transfer_plan_items(plan_id, path, action, reason, confidence, overwrite_policy, verification_mode, dependency_info, status) VALUES(:plan_id,:path,:action,:reason,:confidence,:overwrite_policy,:verification_mode,:dependency_info,:status)');
+        foreach ($items as $item) {
+            $stmt->execute(['plan_id' => $planId] + $item + ['status' => 'pending']);
+        }
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function pendingTransferPlanItems(string $planId, int $limit = 1000): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM upload_transfer_plan_items WHERE plan_id=:plan_id AND status=:status ORDER BY id LIMIT :limit');
+        $stmt->bindValue(':plan_id', $planId);
+        $stmt->bindValue(':status', 'pending');
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function markTransferPlanItem(int $id, string $status, string $note): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE upload_transfer_plan_items SET status=:status, result_note=:result_note, updated_at=CURRENT_TIMESTAMP WHERE id=:id');
+        $stmt->execute(['id' => $id, 'status' => $status, 'result_note' => $note]);
+    }
+
+    /** @param array<string,mixed> $payload */
+    public function saveReconciliationIssue(string $scanId, string $issueType, string $path, string $entityType, string $severity, array $payload): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO upload_reconciliation_issues(scan_id, issue_type, path, entity_type, severity, payload_json) VALUES(:scan_id,:issue_type,:path,:entity_type,:severity,:payload_json)');
+        $stmt->execute(['scan_id' => $scanId, 'issue_type' => $issueType, 'path' => $path, 'entity_type' => $entityType, 'severity' => $severity, 'payload_json' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function reconciliationIssuesByScan(string $scanId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM upload_reconciliation_issues WHERE scan_id=:scan_id ORDER BY id');
+        $stmt->execute(['scan_id' => $scanId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /** @param array<string,mixed> $report */
+    public function saveCutoverReadinessReport(string $jobId, string $scanId, array $report): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO upload_cutover_readiness_reports(job_id, scan_id, verdict, report_json) VALUES(:job_id,:scan_id,:verdict,:report_json)');
+        $stmt->execute(['job_id' => $jobId, 'scan_id' => $scanId, 'verdict' => (string) ($report['cutover_verdict'] ?? 'unknown'), 'report_json' => json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestCutoverReadinessReport(string $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT report_json FROM upload_cutover_readiness_reports WHERE job_id=:job_id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['job_id' => $jobId]);
+        $raw = $stmt->fetchColumn();
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {
