@@ -20,6 +20,13 @@ final class GoLiveDecisionEngine
         $deltaFailures = (int) ($context['delta_failed_count'] ?? 0);
         $allowYellow = (bool) ($context['allow_yellow_with_override'] ?? true);
 
+        if (($context['evidence']['readiness_status']['provenance'] ?? '') === 'unavailable') {
+            $blockers[] = 'readiness_evidence_unavailable';
+        }
+        if (($context['evidence']['verification_color']['provenance'] ?? '') === 'unavailable') {
+            $blockers[] = 'verification_evidence_unavailable';
+        }
+
         if ($readiness === 'blocked') {
             $blockers[] = 'readiness_blocked';
         } elseif ($readiness === 'pass_with_warnings') {

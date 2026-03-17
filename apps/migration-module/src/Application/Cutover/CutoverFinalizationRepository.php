@@ -13,9 +13,9 @@ final class CutoverFinalizationRepository
     }
 
     /** @param array<string,mixed> $metadata */
-    public function createSession(string $freezeId, string $jobId, string $sourceId, string $targetId, string $initiatedBy, string $state, array $metadata = []): void
+    public function createSession(string $freezeId, string $jobId, string $sourceId, string $targetId, string $initiatedBy, string $state, array $metadata = []): bool
     {
-        $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO cutover_freeze_sessions(freeze_window_id,job_id,source_instance_id,target_instance_id,current_state,initiated_by,resumable_flag,metadata_json,created_at,updated_at) VALUES(:id,:job,:src,:tgt,:st,:by,1,:meta,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('INSERT INTO cutover_freeze_sessions(freeze_window_id,job_id,source_instance_id,target_instance_id,current_state,initiated_by,resumable_flag,metadata_json,created_at,updated_at) VALUES(:id,:job,:src,:tgt,:st,:by,1,:meta,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT(freeze_window_id) DO NOTHING');
         $stmt->execute([
             'id' => $freezeId,
             'job' => $jobId,
@@ -25,6 +25,8 @@ final class CutoverFinalizationRepository
             'by' => $initiatedBy,
             'meta' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
+
+        return $stmt->rowCount() > 0;
     }
 
     /** @return array<string,mixed>|null */
@@ -62,6 +64,20 @@ final class CutoverFinalizationRepository
             'event' => $eventName,
             'from' => $from,
             'to' => $to,
+            'actor' => $actor,
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
+
+    /** @param array<string,mixed> $payload */
+    public function saveAuditEvent(string $freezeId, string $eventName, string $actor, array $payload): void
+    {
+        $stmt = $this->pdo->prepare('INSERT INTO cutover_freeze_events(freeze_window_id,event_name,from_state,to_state,actor,payload_json) VALUES(:id,:event,:from,:to,:actor,:payload)');
+        $stmt->execute([
+            'id' => $freezeId,
+            'event' => $eventName,
+            'from' => 'audit',
+            'to' => 'audit',
             'actor' => $actor,
             'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
@@ -132,5 +148,35 @@ final class CutoverFinalizationRepository
     {
         $stmt = $this->pdo->prepare('INSERT INTO metrics(job_id, metric_name, metric_value, tags_json) VALUES(:job,:name,:value,:tags)');
         $stmt->execute(['job' => 'cutover', 'name' => $name, 'value' => $value, 'tags' => json_encode($tags, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestVerdict(string $freezeId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM cutover_verdict_history WHERE freeze_window_id=:id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['id' => $freezeId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestReadinessReport(string $freezeId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM cutover_readiness_reports WHERE freeze_window_id=:id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['id' => $freezeId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function latestVerificationReport(string $freezeId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM cutover_verification_reports WHERE freeze_window_id=:id ORDER BY id DESC LIMIT 1');
+        $stmt->execute(['id' => $freezeId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row === false ? null : $row;
     }
 }

@@ -24,7 +24,26 @@ final class CutoverFinalizationService
     /** @param array<string,mixed> $meta @return array<string,mixed> */
     public function prepare(string $freezeId, string $jobId, string $sourceId, string $targetId, string $actor, array $meta = []): array
     {
-        $this->repo->createSession($freezeId, $jobId, $sourceId, $targetId, $actor, 'draft', $meta);
+        if ($freezeId === '' || $jobId === '') {
+            throw new RuntimeException('invalid_prepare_arguments');
+        }
+
+        $created = $this->repo->createSession($freezeId, $jobId, $sourceId, $targetId, $actor, 'draft', $meta);
+        if (!$created) {
+            $existing = $this->mustSession($freezeId);
+            $currentState = (string) ($existing['current_state'] ?? 'unknown');
+            if ($currentState === 'prepared') {
+                $this->repo->saveAuditEvent($freezeId, 'cutover_prepare_idempotent', $actor, ['state' => $currentState]);
+                $this->repo->incrementMetric('cutover_prepare_idempotent_total', 1, ['freeze_window_id' => $freezeId]);
+
+                return $this->status($freezeId);
+            }
+
+            $this->repo->saveAuditEvent($freezeId, 'cutover_prepare_conflict', $actor, ['state' => $currentState]);
+            $this->repo->incrementMetric('cutover_prepare_conflict_total', 1, ['freeze_window_id' => $freezeId, 'state' => $currentState]);
+            throw new RuntimeException('duplicate_prepare_conflict:' . $currentState);
+        }
+
         $this->transition($freezeId, 'draft', 'prepared', $actor, 'cutover_prepared', ['metadata' => $meta]);
         $this->repo->incrementMetric('cutover_sessions_total');
 
@@ -129,7 +148,10 @@ final class CutoverFinalizationService
     public function verdict(string $freezeId, array $context): array
     {
         $session = $this->mustSession($freezeId);
-        $decision = $this->decision->decide($context);
+        $evidence = $this->buildDecisionEvidence($freezeId, $context);
+        $decision = $this->decision->decide($evidence);
+        $decision['evidence'] = $evidence['evidence'];
+
         $this->repo->saveVerdict($freezeId, (string) $decision['verdict'], $decision, (bool) $decision['override_allowed'], (string) $decision['override_risk_level']);
         $this->repo->patchSession($freezeId, ['verdict' => $decision['verdict']]);
         if ($decision['verdict'] === 'go_live_approved') {
@@ -147,8 +169,28 @@ final class CutoverFinalizationService
     {
         $session = $this->mustSession($freezeId);
         $state = (string) $session['current_state'];
+        $latestVerdict = $this->repo->latestVerdict($freezeId);
+        $latestVerdictValue = (string) ($latestVerdict['verdict'] ?? 'none');
+
+        $blockers = [];
         if ($state !== 'ready_for_go_live') {
-            throw new RuntimeException('complete_not_allowed');
+            $blockers[] = 'state_not_ready_for_go_live';
+        }
+        if ($latestVerdictValue !== 'go_live_approved') {
+            $blockers[] = 'verdict_not_go_live_approved';
+        }
+
+        if ($blockers !== []) {
+            $payload = [
+                'error_code' => 'complete_gate_denied',
+                'current_state' => $state,
+                'latest_verdict' => $latestVerdictValue,
+                'blockers' => $blockers,
+                'next_action' => 'run_cutover_verdict_and_resolve_blockers',
+            ];
+            $this->repo->saveAuditEvent($freezeId, 'cutover_complete_denied', $actor, $payload);
+            $this->repo->incrementMetric('cutover_complete_denied_total', 1, ['freeze_window_id' => $freezeId, 'state' => $state, 'verdict' => $latestVerdictValue]);
+            throw new RuntimeException('complete_gate_denied:' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         }
 
         if ($override) {
@@ -158,6 +200,9 @@ final class CutoverFinalizationService
 
         $this->transition($freezeId, 'ready_for_go_live', 'completed', $actor, 'go_live_approved', ['override' => $override]);
         $this->repo->patchSession($freezeId, ['actual_freeze_end' => gmdate(DATE_ATOM)]);
+        $this->repo->saveAuditEvent($freezeId, 'cutover_complete_allowed', $actor, ['state' => $state, 'latest_verdict' => $latestVerdictValue, 'override' => $override]);
+        $this->repo->incrementMetric('cutover_complete_success_total', 1, ['freeze_window_id' => $freezeId]);
+
         return $this->status($freezeId);
     }
 
@@ -209,6 +254,10 @@ final class CutoverFinalizationService
     /** @return array<string,mixed> */
     private function mustSession(string $freezeId): array
     {
+        if ($freezeId === '') {
+            throw new RuntimeException('freeze_id_required');
+        }
+
         $s = $this->repo->session($freezeId);
         if ($s === null) {
             throw new RuntimeException('freeze_session_not_found');
@@ -230,5 +279,35 @@ final class CutoverFinalizationService
             $this->storage->pdo()->rollBack();
             throw $e;
         }
+    }
+
+    /** @param array<string,mixed> $context @return array<string,mixed> */
+    private function buildDecisionEvidence(string $freezeId, array $context): array
+    {
+        $readinessReport = $this->repo->latestReadinessReport($freezeId);
+        $verificationReport = $this->repo->latestVerificationReport($freezeId);
+
+        $readinessStatus = (string) ($context['readiness_status'] ?? ($readinessReport['status'] ?? 'blocked'));
+        $verificationColor = (string) ($context['verification_color'] ?? ($verificationReport['color'] ?? 'red'));
+        $blockingMutations = (int) ($context['blocking_mutations'] ?? $this->status($freezeId)['mutation_summary']['blocking']);
+
+        $evidence = [
+            'readiness_status' => ['value' => $readinessStatus, 'provenance' => $readinessReport !== null ? 'authoritative' : (isset($context['readiness_status']) ? 'manual_input' : 'unavailable')],
+            'verification_color' => ['value' => $verificationColor, 'provenance' => $verificationReport !== null ? 'authoritative' : (isset($context['verification_color']) ? 'manual_input' : 'unavailable')],
+            'blocking_mutations' => ['value' => $blockingMutations, 'provenance' => 'authoritative'],
+            'unresolved_critical_errors' => ['value' => (int) ($context['unresolved_critical_errors'] ?? 0), 'provenance' => isset($context['unresolved_critical_errors']) ? 'manual_input' : 'unavailable'],
+            'delta_failed_count' => ['value' => (int) ($context['delta_failed_count'] ?? 0), 'provenance' => isset($context['delta_failed_count']) ? 'manual_input' : 'unavailable'],
+            'allow_yellow_with_override' => ['value' => (bool) ($context['allow_yellow_with_override'] ?? true), 'provenance' => isset($context['allow_yellow_with_override']) ? 'manual_input' : 'heuristic'],
+        ];
+
+        return [
+            'readiness_status' => $readinessStatus,
+            'verification_color' => $verificationColor,
+            'blocking_mutations' => $blockingMutations,
+            'unresolved_critical_errors' => $evidence['unresolved_critical_errors']['value'],
+            'delta_failed_count' => $evidence['delta_failed_count']['value'],
+            'allow_yellow_with_override' => $evidence['allow_yellow_with_override']['value'],
+            'evidence' => $evidence,
+        ];
     }
 }
