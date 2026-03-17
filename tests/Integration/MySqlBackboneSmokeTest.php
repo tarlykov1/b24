@@ -9,7 +9,7 @@ use MigrationModule\Prototype\DB\DbVerificationEngine;
 use MigrationModule\Prototype\DB\EntityGraphBuilder;
 use MigrationModule\Prototype\DB\MySqlSourceDiscovery;
 use MigrationModule\Prototype\DB\MySqlSourceExtractor;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class MySqlBackboneSmokeTest extends TestCase
@@ -18,7 +18,7 @@ final class MySqlBackboneSmokeTest extends TestCase
     {
         $storagePath = __DIR__ . '/../../.prototype/mysql_backbone_discovery.sqlite';
         @unlink($storagePath);
-        $storage = new SqliteStorage($storagePath);
+        $storage = new MySqlStorage($storagePath);
         $storage->initSchema();
         $jobId = $storage->createJob('execute');
 
@@ -44,7 +44,7 @@ final class MySqlBackboneSmokeTest extends TestCase
     {
         $storagePath = __DIR__ . '/../../.prototype/mysql_backbone_extract.sqlite';
         @unlink($storagePath);
-        $storage = new SqliteStorage($storagePath);
+        $storage = new MySqlStorage($storagePath);
         $storage->initSchema();
         $jobId = $storage->createJob('execute');
 

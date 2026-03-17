@@ -109,3 +109,12 @@ Compatibility boundary note: repository still contains legacy cutover/orchestrat
 - SQLite is no longer supported.
 - Configure only MySQL via `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CHARSET`, `DB_COLLATION`.
 - Runtime and installer both require PDO MySQL and external MySQL connectivity.
+
+
+## Offline portable deployment
+- Target mode: portable archive, no internet access.
+- Deployment does **not** require runtime package installs (`composer install` / `npm install` are build-time only, outside target server).
+- Runtime storage is MySQL-only (`pdo_mysql`), configured through:
+  `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CHARSET`, `DB_COLLATION`.
+- Installer and runtime share the same DB config source and schema (`db/mysql_platform_schema.sql`).
+- Readiness check command: `php bin/migration-module deployment:check`.

@@ -7,18 +7,18 @@ use MigrationModule\ControlCenter\Service\ConflictResolver;
 use MigrationModule\ControlCenter\Service\DiffEngine;
 use MigrationModule\ControlCenter\Service\IntegrityRepairService;
 use MigrationModule\ControlCenter\Service\MigrationMonitor;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class ControlCenterTest extends TestCase
 {
     private string $dbPath;
-    private SqliteStorage $storage;
+    private MySqlStorage $storage;
 
     protected function setUp(): void
     {
         $this->dbPath = sys_get_temp_dir() . '/control-center-' . bin2hex(random_bytes(4)) . '.sqlite';
-        $this->storage = new SqliteStorage($this->dbPath);
+        $this->storage = new MySqlStorage($this->dbPath);
         $this->storage->initSchema();
     }
 

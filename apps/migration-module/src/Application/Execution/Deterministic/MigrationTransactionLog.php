@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Execution\Deterministic;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class MigrationTransactionLog
 {
-    public function __construct(private readonly SqliteStorage $storage)
+    public function __construct(private readonly MySqlStorage $storage)
     {
     }
 

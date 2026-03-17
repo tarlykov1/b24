@@ -7,18 +7,13 @@ namespace MigrationModule\Prototype\Storage;
 use PDO;
 use DomainException;
 
-final class SqliteStorage
+final class MySqlStorage
 {
     private PDO $pdo;
 
-    public function __construct(string $path)
+    public function __construct(string $dsn)
     {
-        $dir = dirname($path);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0777, true);
-        }
-
-        $dsn = $this->buildMysqlDsn($path);
+        $dsn = $this->buildMysqlDsn($dsn);
         $this->pdo = new PDO($dsn, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -978,10 +973,10 @@ final class SqliteStorage
     }
 
 
-    private function buildMysqlDsn(string $legacy): string
+    private function buildMysqlDsn(string $dsn): string
     {
-        if (str_starts_with($legacy, 'mysql:')) {
-            return $legacy;
+        if (str_starts_with($dsn, 'mysql:')) {
+            return $dsn;
         }
 
         $host = (string) ($_ENV['DB_HOST'] ?? '127.0.0.1');

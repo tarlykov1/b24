@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace MigrationModule\Prototype\DB;
 
 use MigrationModule\Prototype\Adapter\Target\MySqlTargetReadAdapter;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class DbVerificationEngine
 {
     public function __construct(
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
         private readonly ?MySqlTargetReadAdapter $targetReadAdapter = null,
     ) {
     }

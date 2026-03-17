@@ -41,7 +41,7 @@ final class RepairEngine
 
         $this->repository->saveManualOverride($jobId, 'repair-plan:latest', $plan);
         if ($this->pdo !== null) {
-            $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO migration_repair_plans(plan_id, job_id, status, plan_json, created_at, applied_at) VALUES(:plan_id,:job_id,:status,:plan_json,CURRENT_TIMESTAMP,NULL)');
+            $stmt = $this->pdo->prepare('INSERT INTO migration_repair_plans(plan_id, job_id, status, plan_json, created_at, applied_at) VALUES(:plan_id,:job_id,:status,:plan_json,CURRENT_TIMESTAMP,NULL) ON DUPLICATE KEY UPDATE status=VALUES(status), plan_json=VALUES(plan_json), applied_at=VALUES(applied_at)');
             $stmt->execute([
                 'plan_id' => $plan['plan_id'],
                 'job_id' => $jobId,

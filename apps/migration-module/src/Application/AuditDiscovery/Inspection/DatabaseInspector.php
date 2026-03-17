@@ -171,13 +171,6 @@ final class DatabaseInspector
     {
         try {
             $driver = (string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-            if ($driver === 'sqlite') {
-                $pageSize = $this->scalar($pdo, 'PRAGMA page_size');
-                $pageCount = $this->scalar($pdo, 'PRAGMA page_count');
-
-                return $pageSize * $pageCount;
-            }
-
             if ($driver === 'mysql') {
                 return $this->scalar($pdo, 'SELECT COALESCE(SUM(data_length + index_length),0) FROM information_schema.tables WHERE table_schema = DATABASE()');
             }

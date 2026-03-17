@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\DeltaUpload;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
 
 final class BaselineDeltaServices
 {
-    public function __construct(private readonly SqliteStorage $storage)
+    public function __construct(private readonly MySqlStorage $storage)
     {
     }
 

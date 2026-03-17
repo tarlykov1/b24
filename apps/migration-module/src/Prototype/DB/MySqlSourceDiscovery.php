@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace MigrationModule\Prototype\DB;
 
 use MigrationModule\Prototype\Adapter\Source\MySqlSourceReadAdapter;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class MySqlSourceDiscovery
 {
     public function __construct(
         private readonly MySqlSourceReadAdapter $adapter,
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
         private readonly DbSafetyGuard $safetyGuard,
     ) {
     }

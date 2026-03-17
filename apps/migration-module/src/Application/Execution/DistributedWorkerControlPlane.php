@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace MigrationModule\Application\Execution;
 
 use MigrationModule\Application\Throttling\AdaptiveRateLimiter;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class DistributedWorkerControlPlane
 {
@@ -13,7 +13,7 @@ final class DistributedWorkerControlPlane
     private const MAX_RETRY_ATTEMPTS = 3;
 
     public function __construct(
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
         private readonly AdaptiveRateLimiter $rateLimiter,
     ) {
     }

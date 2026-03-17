@@ -27,8 +27,6 @@ final class SystemCheckService
         $charset = (string) ($dbConfig['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
 
         $checks = [
-            'bitrix_connectivity' => false,
-            'api_permissions' => false,
             'pdo_mysql' => extension_loaded('pdo_mysql'),
             'mysql_tcp_reachable' => false,
             'mysql_select_1' => false,
@@ -67,17 +65,6 @@ final class SystemCheckService
             }
         } else {
             $errors[] = ['code' => 'pdo_mysql_missing', 'message' => 'PDO MySQL extension is required'];
-        }
-
-        if ($this->client !== null) {
-            try {
-                $userInfo = $this->client->call('user.current');
-                $checks['bitrix_connectivity'] = isset($userInfo['ID']) || isset($userInfo['id']);
-                $checks['api_permissions'] = true;
-            } catch (Throwable) {
-                $checks['bitrix_connectivity'] = false;
-                $checks['api_permissions'] = false;
-            }
         }
 
         return [
