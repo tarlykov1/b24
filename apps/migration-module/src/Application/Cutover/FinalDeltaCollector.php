@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Cutover;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PDO;
 
 final class FinalDeltaCollector
 {
-    public function __construct(private readonly SqliteStorage $storage)
+    public function __construct(private readonly MySqlStorage $storage)
     {
     }
 

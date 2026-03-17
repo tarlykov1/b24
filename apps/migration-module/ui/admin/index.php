@@ -2,6 +2,24 @@
 
 declare(strict_types=1);
 
+$generatedConfigPath = __DIR__ . '/../../../../config/generated-install-config.json';
+if (is_file($generatedConfigPath)) {
+    $generated = json_decode((string) file_get_contents($generatedConfigPath), true);
+    if (is_array($generated) && isset($generated['mysql']) && is_array($generated['mysql'])) {
+        $mysql = $generated['mysql'];
+        $_ENV['DB_HOST'] = (string) ($mysql['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
+        $_ENV['DB_PORT'] = (string) ($mysql['port'] ?? ($_ENV['DB_PORT'] ?? '3306'));
+        $_ENV['DB_NAME'] = (string) ($mysql['name'] ?? ($_ENV['DB_NAME'] ?? ''));
+        $_ENV['DB_USER'] = (string) ($mysql['user'] ?? ($_ENV['DB_USER'] ?? ''));
+        $_ENV['DB_PASSWORD'] = (string) ($mysql['password'] ?? ($_ENV['DB_PASSWORD'] ?? ''));
+        $_ENV['DB_CHARSET'] = (string) ($mysql['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+    }
+}
+if ((string) ($_ENV['DB_NAME'] ?? '') === '' || (string) ($_ENV['DB_USER'] ?? '') === '') {
+    header('Location: install.php');
+    exit;
+}
+
 $loggedIn = true;
 $csrf = 'n/a';
 $summary = [

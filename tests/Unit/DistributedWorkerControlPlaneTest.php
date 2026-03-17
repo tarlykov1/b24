@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use MigrationModule\Application\Execution\DistributedWorkerControlPlane;
 use MigrationModule\Application\Throttling\AdaptiveRateLimiter;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class DistributedWorkerControlPlaneTest extends TestCase
@@ -12,7 +12,7 @@ final class DistributedWorkerControlPlaneTest extends TestCase
     public function testInitPauseResumeAndRetryAreResumable(): void
     {
         $storagePath = sys_get_temp_dir() . '/migration-control-plane-' . bin2hex(random_bytes(4)) . '.sqlite';
-        $storage = new SqliteStorage($storagePath);
+        $storage = new MySqlStorage($storagePath);
         $storage->initSchema();
         $control = new DistributedWorkerControlPlane($storage, new AdaptiveRateLimiter('safe'));
         $jobId = 'job-control-1';
@@ -36,7 +36,7 @@ final class DistributedWorkerControlPlaneTest extends TestCase
     public function testLeaseLifecycleRecoveryAndDeadLetterQueue(): void
     {
         $storagePath = sys_get_temp_dir() . '/migration-control-plane-' . bin2hex(random_bytes(4)) . '.sqlite';
-        $storage = new SqliteStorage($storagePath);
+        $storage = new MySqlStorage($storagePath);
         $storage->initSchema();
         $control = new DistributedWorkerControlPlane($storage, new AdaptiveRateLimiter('balanced'));
         $jobId = 'job-control-3';
@@ -65,7 +65,7 @@ final class DistributedWorkerControlPlaneTest extends TestCase
     public function testHeartbeatAdjustsAdaptiveThrottlingOnErrors(): void
     {
         $storagePath = sys_get_temp_dir() . '/migration-control-plane-' . bin2hex(random_bytes(4)) . '.sqlite';
-        $storage = new SqliteStorage($storagePath);
+        $storage = new MySqlStorage($storagePath);
         $storage->initSchema();
         $limiter = new AdaptiveRateLimiter('balanced');
         $control = new DistributedWorkerControlPlane($storage, $limiter);

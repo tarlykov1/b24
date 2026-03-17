@@ -7,7 +7,7 @@ use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
 use MigrationModule\Prototype\Policy\UserHandlingPolicy;
 use MigrationModule\Prototype\PrototypeRuntime;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class DeterministicRuntimeTest extends TestCase
@@ -15,7 +15,7 @@ final class DeterministicRuntimeTest extends TestCase
     public function testExecuteThenResumeIsIdempotent(): void
     {
         $path = sys_get_temp_dir() . '/runtime-deterministic-' . uniqid('', true) . '.sqlite';
-        $storage = new SqliteStorage($path);
+        $storage = new MySqlStorage($path);
         $storage->initSchema();
         $jobId = $storage->createJob('execute');
 

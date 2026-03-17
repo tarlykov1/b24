@@ -128,7 +128,7 @@ final class AutoRecoveryEngine
     /** @param array<string,mixed> $runtime */
     private function saveRuntime(PDO $pdo, array $runtime): void
     {
-        $stmt = $pdo->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON CONFLICT(entity_type) DO UPDATE SET status=excluded.status, updated_at=CURRENT_TIMESTAMP');
+        $stmt = $pdo->prepare('INSERT INTO state(entity_type,last_sync_time,records_processed,status,updated_at) VALUES(:entity_type,:last_sync_time,:records_processed,:status,CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE status=VALUES(status), updated_at=CURRENT_TIMESTAMP');
         $stmt->execute([
             'entity_type' => 'health_runtime',
             'last_sync_time' => null,

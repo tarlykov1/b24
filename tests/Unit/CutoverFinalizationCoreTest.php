@@ -10,7 +10,7 @@ use MigrationModule\Application\Cutover\CutoverVerificationRunner;
 use MigrationModule\Application\Cutover\FinalDeltaCollector;
 use MigrationModule\Application\Cutover\FreezeWindowManager;
 use MigrationModule\Application\Cutover\GoLiveDecisionEngine;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class CutoverFinalizationCoreTest extends TestCase
@@ -145,11 +145,11 @@ final class CutoverFinalizationCoreTest extends TestCase
         unset($storage);
     }
 
-    /** @return array{0:CutoverFinalizationService,1:SqliteStorage} */
+    /** @return array{0:CutoverFinalizationService,1:MySqlStorage} */
     private function makeService(): array
     {
         $path = sys_get_temp_dir() . '/cutover-finalization-core-' . bin2hex(random_bytes(4)) . '.sqlite';
-        $storage = new SqliteStorage($path);
+        $storage = new MySqlStorage($path);
         $storage->initSchema();
 
         return [

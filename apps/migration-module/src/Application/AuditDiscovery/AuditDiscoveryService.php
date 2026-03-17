@@ -336,19 +336,24 @@ final class AuditDiscoveryService
 
     private function buildReadonlyPdo(): ?PDO
     {
-        $dsn = (string) $this->env('BITRIX_DB_DSN', '');
-        if ($dsn === '') {
+        $host = (string) $this->env('DB_HOST', '127.0.0.1');
+        $port = (int) $this->env('DB_PORT', '3306');
+        $db = (string) $this->env('DB_NAME', '');
+        $user = (string) $this->env('DB_USER', '');
+        $password = (string) $this->env('DB_PASSWORD', '');
+        $charset = (string) $this->env('DB_CHARSET', 'utf8mb4');
+        if ($db === '' || $user === '') {
             return null;
         }
 
+        $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $host, $port, $db, $charset);
+
         try {
-            $pdo = new PDO($dsn, (string) $this->env('BITRIX_DB_USER', ''), (string) $this->env('BITRIX_DB_PASSWORD', ''), [
+            $pdo = new PDO($dsn, $user, $password, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
-            if (str_starts_with($dsn, 'mysql:')) {
-                $pdo->exec('SET SESSION TRANSACTION READ ONLY');
-            }
+            $pdo->exec('SET SESSION TRANSACTION READ ONLY');
 
             return $pdo;
         } catch (Throwable) {

@@ -15,7 +15,7 @@ final class CutoverFinalizationRepository
     /** @param array<string,mixed> $metadata */
     public function createSession(string $freezeId, string $jobId, string $sourceId, string $targetId, string $initiatedBy, string $state, array $metadata = []): bool
     {
-        $stmt = $this->pdo->prepare('INSERT INTO cutover_freeze_sessions(freeze_window_id,job_id,source_instance_id,target_instance_id,current_state,initiated_by,resumable_flag,metadata_json,created_at,updated_at) VALUES(:id,:job,:src,:tgt,:st,:by,1,:meta,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT(freeze_window_id) DO NOTHING');
+        $stmt = $this->pdo->prepare('INSERT INTO cutover_freeze_sessions(freeze_window_id,job_id,source_instance_id,target_instance_id,current_state,initiated_by,resumable_flag,metadata_json,created_at,updated_at) VALUES(:id,:job,:src,:tgt,:st,:by,1,:meta,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE freeze_window_id=freeze_window_id');
         $stmt->execute([
             'id' => $freezeId,
             'job' => $jobId,

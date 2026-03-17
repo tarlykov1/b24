@@ -6,7 +6,7 @@ use MigrationModule\Application\Execution\Deterministic\ExecutionGraphBuilder;
 use MigrationModule\Application\Execution\Deterministic\ExecutionPlanBuilder;
 use MigrationModule\Application\Execution\Deterministic\FailureClassifier;
 use MigrationModule\Application\Execution\Deterministic\ReplayProtectionService;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class DeterministicEngineTest extends TestCase
@@ -42,7 +42,7 @@ final class DeterministicEngineTest extends TestCase
     public function testReplayProtection(): void
     {
         $path = sys_get_temp_dir() . '/deterministic-test-' . uniqid('', true) . '.sqlite';
-        $storage = new SqliteStorage($path);
+        $storage = new MySqlStorage($path);
         $storage->initSchema();
         $storage->createJob('execute');
         $service = new ReplayProtectionService($storage);

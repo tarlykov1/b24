@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Execution\Deterministic;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use Throwable;
 
 final class ExecutionEngine
@@ -17,7 +17,7 @@ final class ExecutionEngine
         private readonly MigrationTransactionLog $txLog,
         private readonly FailureClassifier $classifier,
         private readonly RetryPolicy $retryPolicy,
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
     ) {
     }
 

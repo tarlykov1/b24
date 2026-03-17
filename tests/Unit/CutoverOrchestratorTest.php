@@ -5,7 +5,7 @@ declare(strict_types=1);
 use MigrationModule\Application\Cutover\CutoverRepository;
 use MigrationModule\Application\Cutover\CutoverService;
 use MigrationModule\Application\Cutover\CutoverStateMachine;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use PHPUnit\Framework\TestCase;
 
 final class CutoverOrchestratorTest extends TestCase
@@ -13,7 +13,7 @@ final class CutoverOrchestratorTest extends TestCase
     public function testPlanReadinessApproveGoLiveAndReport(): void
     {
         $dbPath = sys_get_temp_dir() . '/cutover-test-' . bin2hex(random_bytes(3)) . '.sqlite';
-        $storage = new SqliteStorage($dbPath);
+        $storage = new MySqlStorage($dbPath);
         $storage->initSchema();
         $jobId = $storage->createJob('execute');
 

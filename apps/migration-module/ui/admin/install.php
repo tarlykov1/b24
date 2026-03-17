@@ -25,12 +25,6 @@ $steps = [
   <textarea id="cfg" style="width:100%;height:280px;">
 {
   "config": {
-    "platform": {
-      "mysql_dsn": "mysql:host=127.0.0.1;port=3306;dbname=bitrix_migration;charset=utf8mb4",
-      "install_dir": "/opt/bitrix-migration",
-      "log_dir": "/var/log/bitrix-migration",
-      "temp_dir": "/var/tmp/bitrix-migration"
-    },
     "mysql": {
       "host": "127.0.0.1",
       "port": 3306,

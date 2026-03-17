@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Sync;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class ContinuousSyncService
 {
     private const DEFAULT_ENTITIES = ['users', 'crm', 'tasks', 'files', 'comments', 'activity_logs'];
 
-    public function __construct(private readonly SqliteStorage $storage)
+    public function __construct(private readonly MySqlStorage $storage)
     {
     }
 

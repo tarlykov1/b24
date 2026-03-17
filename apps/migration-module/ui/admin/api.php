@@ -16,6 +16,7 @@ use MigrationModule\Preflight\CheckRegistry;
 use MigrationModule\Preflight\PreflightRunner;
 use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
+use MigrationModule\Support\DbConfig;
 
 $vendorAutoload = __DIR__ . '/../../../../vendor/autoload.php';
 if (is_file($vendorAutoload)) {
@@ -52,6 +53,24 @@ $path = preg_replace('#^.*?/api\.php#', '', $path) ?: '/';
 $auth = new AdminAuth();
 $query = array_merge($_GET, $_POST, json_decode((string) file_get_contents('php://input'), true) ?? []);
 
+
+$generatedConfigPath = __DIR__ . '/../../../../config/generated-install-config.json';
+if (is_file($generatedConfigPath)) {
+    $generated = json_decode((string) file_get_contents($generatedConfigPath), true);
+    if (is_array($generated)) {
+        $mysql = (array) ($generated['mysql'] ?? ($generated['platform']['mysql'] ?? []));
+        if ($mysql !== []) {
+            $_ENV['DB_HOST'] = (string) ($mysql['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
+            $_ENV['DB_PORT'] = (string) ($mysql['port'] ?? ($_ENV['DB_PORT'] ?? '3306'));
+            $_ENV['DB_NAME'] = (string) ($mysql['name'] ?? ($_ENV['DB_NAME'] ?? ''));
+            $_ENV['DB_USER'] = (string) ($mysql['user'] ?? ($_ENV['DB_USER'] ?? ''));
+            $_ENV['DB_PASSWORD'] = (string) ($mysql['password'] ?? ($_ENV['DB_PASSWORD'] ?? ''));
+            $_ENV['DB_CHARSET'] = (string) ($mysql['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+            $_ENV['DB_COLLATION'] = (string) ($mysql['collation'] ?? ($_ENV['DB_COLLATION'] ?? 'utf8mb4_unicode_ci'));
+        }
+    }
+}
+
 if ($path === '/stream') {
     http_response_code(501);
     header('Content-Type: application/json; charset=utf-8');
@@ -73,8 +92,8 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
     $response = $service->check();
     if ($path === '/metrics') {
         header('Content-Type: text/plain; version=0.0.4');
-        $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($_ENV['DB_HOST'] ?? '127.0.0.1'), (int) ($_ENV['DB_PORT'] ?? 3306), (string) ($_ENV['DB_NAME'] ?? ''), (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
-        $pdoMetrics = new PDO($dsn, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
+        $dbConfig = DbConfig::fromEnvAndOverride();
+        $pdoMetrics = new PDO(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
         $pdoMetrics->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $jobs = (int) $pdoMetrics->query('SELECT COUNT(*) FROM jobs')->fetchColumn();
         $running = (int) $pdoMetrics->query("SELECT COUNT(*) FROM jobs WHERE status='running'")->fetchColumn();
@@ -143,13 +162,15 @@ if (str_starts_with($path, '/install/')) {
         $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
     } elseif ($path === '/install/init-schema') {
         $mysql = (array) ($config['mysql'] ?? []);
-        $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($mysql['host'] ?? '127.0.0.1'), (int) ($mysql['port'] ?? 3306), (string) ($mysql['name'] ?? ''), (string) ($mysql['charset'] ?? 'utf8mb4'));
-        $pdo = new PDO($dsn, (string) ($mysql['user'] ?? ''), (string) ($mysql['password'] ?? ''));
+        $dbCfg = DbConfig::fromEnvAndOverride($mysql);
+        $pdo = new PDO(DbConfig::dsn($dbCfg), (string) $dbCfg['user'], (string) $dbCfg['password']);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
     } elseif ($path === '/install/generate-config') {
         $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
-        $response = $wizard->generateConfig($config, $outputPath);
+        $mysql = (array) ($config['mysql'] ?? []);
+        $payload = ['mysql' => DbConfig::fromEnvAndOverride($mysql)];
+        $response = $wizard->generateConfig($payload, $outputPath);
     } else {
         $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
     }
@@ -182,12 +203,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$auth->validateCsrf($_SERVER['HTTP
     exit;
 }
 
-$pdo = null;
-$databaseUrl = (string) ($_ENV['MIGRATION_DATABASE_URL'] ?? '');
-if ($databaseUrl === '') {
-    $databaseUrl = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($_ENV['DB_HOST'] ?? '127.0.0.1'), (int) ($_ENV['DB_PORT'] ?? 3306), (string) ($_ENV['DB_NAME'] ?? ''), (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+$dbConfig = DbConfig::fromEnvAndOverride();
+if ($dbConfig['name'] === '' || $dbConfig['user'] === '') {
+    http_response_code(412);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'installer_required', 'open' => 'install.php']);
+    exit;
 }
-$pdo = new PDO($databaseUrl, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
+$pdo = new PDO(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 $security = new SecurityGovernanceService();

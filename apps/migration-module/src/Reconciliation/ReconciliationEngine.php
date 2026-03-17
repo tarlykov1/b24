@@ -6,14 +6,14 @@ namespace MigrationModule\Reconciliation;
 
 use MigrationModule\Prototype\Adapter\SourceAdapterInterface;
 use MigrationModule\Prototype\Adapter\TargetAdapterInterface;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class ReconciliationEngine
 {
     private const STATUS_OK = 'OK';
 
     public function __construct(
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
         private readonly SourceAdapterInterface $source,
         private readonly TargetAdapterInterface $target,
     ) {

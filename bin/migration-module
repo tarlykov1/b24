@@ -25,7 +25,8 @@ use MigrationModule\Prototype\ConfigLoader;
 use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
 use MigrationModule\Prototype\Policy\UserHandlingPolicy;
 use MigrationModule\Prototype\PrototypeRuntime;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
+use MigrationModule\Support\DbConfig;
 
 $autoload = __DIR__ . '/../vendor/autoload.php';
 if (is_file($autoload)) {
@@ -186,15 +187,8 @@ foreach ($futureNamespaces as $ns) {
 
 $configPath = (string) ($options['config'] ?? 'migration.config.yml');
 $config = (new ConfigLoader())->load($configPath);
-$storageDsn = (string) ($config['storage']['dsn'] ?? '');
-if ($storageDsn === '') {
-    $storageHost = (string) ($config['storage']['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
-    $storagePort = (int) ($config['storage']['port'] ?? ($_ENV['DB_PORT'] ?? 3306));
-    $storageName = (string) ($config['storage']['name'] ?? ($_ENV['DB_NAME'] ?? ''));
-    $storageCharset = (string) ($config['storage']['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
-    $storageDsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $storageHost, $storagePort, $storageName, $storageCharset);
-}
-$storage = new SqliteStorage($storageDsn);
+$dbConfig = DbConfig::fromEnvAndOverride((array) ($config['storage'] ?? []));
+$storage = new MySqlStorage(DbConfig::dsn($dbConfig));
 $storage->initSchema();
 
 $sourceAdapter = new StubSourceAdapter();
@@ -223,7 +217,7 @@ $jobId = (string) ($options['job-id'] ?? '');
 if ($command === 'help') {
     out(['commands' => [
         'validate', 'config:validate', 'create-job', 'plan', 'plan:show', 'plan:export', 'dry-run', 'execute', 'resume', 'pause', 'retry', 'status', 'verify', 'report',
-        'preflight',
+        'preflight', 'deployment:check',
         'audit:run', 'audit:summary', 'audit:report', 'audit:velocity',
         'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute',
         'delta:plan', 'delta:execute',
@@ -248,6 +242,13 @@ if ($command === 'preflight') {
     out($report, $exit);
 }
 
+
+if ($command === 'deployment:check') {
+    $result = (new \MigrationModule\Application\Readiness\SystemCheckService())->check($dbConfig);
+    $exitCode = ($result['ok'] ?? false) ? 0 : 2;
+    out($result + ['command' => 'deployment:check'], $exitCode);
+}
+
 if (in_array($command, ['create-job', 'execute'], true)) {
     $strictMode = isset($options['strict']);
     $preflight = $runPreflight($strictMode);
@@ -269,7 +270,7 @@ if ($command === 'create-job') {
     out(['job_id' => $storage->createJob((string) ($options['mode'] ?? 'initial'))]);
 }
 
-if ($jobId === '' && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'audit:run', 'audit:summary', 'audit:report', 'audit:velocity', 'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute','cutover:freeze:status','cutover:verdict','cutover:abort','cutover:resume','cutover:complete'], true)) {
+if ($jobId === '' && !in_array($command, ['help', 'validate', 'config:validate', 'create-job', 'deployment:check', 'audit:run', 'audit:summary', 'audit:report', 'audit:velocity', 'target:inspect', 'target:cleanup-plan', 'target:cleanup-execute','cutover:freeze:status','cutover:verdict','cutover:abort','cutover:resume','cutover:complete'], true)) {
     out(['error' => 'job_id_required', 'usage' => $command . ' --job-id=<id>'], 2);
 }
 if ($jobId !== '') {
@@ -313,8 +314,11 @@ switch ($command) {
         $kind = str_replace('audit:', '', $command);
         out((new AuditDiscoveryService())->run($kind, isset($options['deep'])));
     case 'audit:velocity':
-        $dsn = (string) ($_ENV['BITRIX_DB_DSN'] ?? getenv('BITRIX_DB_DSN') ?: '');
-        $pdo = $dsn !== '' ? new PDO($dsn, (string) ($_ENV['BITRIX_DB_USER'] ?? getenv('BITRIX_DB_USER') ?: ''), (string) ($_ENV['BITRIX_DB_PASSWORD'] ?? getenv('BITRIX_DB_PASSWORD') ?: ''), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]) : null;
+        $auditDb = DbConfig::fromEnvAndOverride();
+        $pdo = null;
+        if ($auditDb['name'] !== '' && $auditDb['user'] !== '') {
+            $pdo = new PDO(DbConfig::dsn($auditDb), (string) $auditDb['user'], (string) $auditDb['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        }
         $rest = null;
         if ((($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL') ?: '') !== '') && (($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN') ?: '') !== '')) {
             $rest = new BitrixRestClient((string) ($_ENV['BITRIX_WEBHOOK_URL'] ?? getenv('BITRIX_WEBHOOK_URL')), (string) ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? getenv('BITRIX_WEBHOOK_TOKEN')));

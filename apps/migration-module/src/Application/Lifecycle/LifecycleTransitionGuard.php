@@ -6,11 +6,11 @@ namespace MigrationModule\Application\Lifecycle;
 
 use DomainException;
 use MigrationModule\Domain\Job\JobLifecycle;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class LifecycleTransitionGuard
 {
-    public function __construct(private readonly SqliteStorage $storage)
+    public function __construct(private readonly MySqlStorage $storage)
     {
     }
 

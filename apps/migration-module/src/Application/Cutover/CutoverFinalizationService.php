@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MigrationModule\Application\Cutover;
 
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 use RuntimeException;
 
 final class CutoverFinalizationService
@@ -17,7 +17,7 @@ final class CutoverFinalizationService
         private readonly FinalDeltaCollector $delta,
         private readonly CutoverVerificationRunner $verification,
         private readonly GoLiveDecisionEngine $decision,
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
     ) {
     }
 

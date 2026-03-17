@@ -6,12 +6,12 @@ namespace MigrationModule\Delta;
 
 use MigrationModule\Prototype\Adapter\SourceAdapterInterface;
 use MigrationModule\Prototype\Adapter\TargetAdapterInterface;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 final class DeltaSyncEngine
 {
     public function __construct(
-        private readonly SqliteStorage $storage,
+        private readonly MySqlStorage $storage,
         private readonly SourceAdapterInterface $source,
         private readonly TargetAdapterInterface $target,
     ) {

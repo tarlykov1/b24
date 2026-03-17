@@ -16,7 +16,7 @@ final class SimulationRepository
 
     public function saveScenario(string $auditId, string $policyVersion, SimulationScenario $scenario, array $inputSnapshot): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO simulation_scenarios(id, name, migration_mode, parameters_json, based_on_audit_id, policy_version, input_snapshot_json, created_at) VALUES(:id,:name,:migration_mode,:parameters_json,:audit_id,:policy_version,:input_snapshot_json,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('INSERT INTO simulation_scenarios(id, name, migration_mode, parameters_json, based_on_audit_id, policy_version, input_snapshot_json, created_at) VALUES(:id,:name,:migration_mode,:parameters_json,:audit_id,:policy_version,:input_snapshot_json,CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE name=VALUES(name), migration_mode=VALUES(migration_mode), parameters_json=VALUES(parameters_json), based_on_audit_id=VALUES(based_on_audit_id), policy_version=VALUES(policy_version), input_snapshot_json=VALUES(input_snapshot_json)');
         $stmt->execute([
             'id' => $scenario->id,
             'name' => $scenario->name,

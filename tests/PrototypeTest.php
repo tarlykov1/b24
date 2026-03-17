@@ -8,7 +8,7 @@ use MigrationModule\Prototype\ConfigLoader;
 use MigrationModule\Prototype\Policy\IdConflictResolutionPolicy;
 use MigrationModule\Prototype\Policy\UserHandlingPolicy;
 use MigrationModule\Prototype\PrototypeRuntime;
-use MigrationModule\Prototype\Storage\SqliteStorage;
+use MigrationModule\Prototype\Storage\MySqlStorage;
 
 spl_autoload_register(static function (string $class): void {
     $prefix = 'MigrationModule\\';
@@ -32,7 +32,7 @@ function ok(bool $condition, string $message): void {
 file_put_contents(__DIR__ . '/../migration.test.config.yml', "batch_size: 2\nstorage:\n  path: .prototype/test.sqlite\nretry_policy:\n  max_retries: 2\nruntime:\n  profile: test\nid_preservation_policy: preserve_if_possible\nuser_policy:\n  cutoff_date: 2024-01-01T00:00:00+00:00\n  inactive_strategy: skip_user\n");
 $config = (new ConfigLoader())->load(__DIR__ . '/../migration.test.config.yml');
 $runtime = new PrototypeRuntime(
-    new SqliteStorage(__DIR__ . '/../.prototype/test.sqlite'),
+    new MySqlStorage(__DIR__ . '/../.prototype/test.sqlite'),
     new StubSourceAdapter(),
     new StubTargetAdapter(),
     new IdConflictResolutionPolicy(),
@@ -43,7 +43,7 @@ $runtime = new PrototypeRuntime(
 $validated = $runtime->validate();
 ok($validated['ok'] === true, 'config loading and validate');
 
-$storage = new SqliteStorage(__DIR__ . '/../.prototype/test.sqlite');
+$storage = new MySqlStorage(__DIR__ . '/../.prototype/test.sqlite');
 $storage->initSchema();
 $job = $storage->createJob('test');
 $plan = $runtime->plan($job);
