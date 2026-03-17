@@ -28,23 +28,8 @@ use MigrationModule\Prototype\PrototypeRuntime;
 use MigrationModule\Prototype\Storage\MySqlStorage;
 use MigrationModule\Support\DbConfig;
 
-$autoload = __DIR__ . '/../vendor/autoload.php';
-if (is_file($autoload)) {
-    require_once $autoload;
-} else {
-    spl_autoload_register(static function (string $class): void {
-        $prefix = 'MigrationModule\\';
-        if (!str_starts_with($class, $prefix)) {
-            return;
-        }
-
-        $relative = substr($class, strlen($prefix));
-        $path = __DIR__ . '/../apps/migration-module/src/' . str_replace('\\', '/', $relative) . '.php';
-        if (is_file($path)) {
-            require_once $path;
-        }
-    });
-}
+require_once __DIR__ . '/../apps/migration-module/bootstrap.php';
+migration_module_bootstrap(dirname(__DIR__));
 
 function out(array $payload, int $code = 0): never
 {
@@ -161,6 +146,35 @@ function cutoverError(Throwable $e, string $command): never
 
     out(['ok' => false, 'command' => $command, 'error' => $details], 2);
 }
+
+function classifyMysqlBootstrapFailure(Throwable $e): string
+{
+    $message = strtolower($e->getMessage());
+
+    return match (true) {
+        str_contains($message, 'connection refused'), str_contains($message, 'no route to host'), str_contains($message, 'php_network_getaddresses') => 'mysql_connection_refused',
+        str_contains($message, 'access denied') => 'mysql_auth_failure',
+        str_contains($message, 'timeout') => 'mysql_timeout',
+        str_contains($message, 'unknown database') => 'mysql_database_not_found',
+        default => 'mysql_connection_or_permission_failed',
+    };
+}
+
+function mysqlBootstrapFailure(Throwable $e, string $command, array $dbConfig): never
+{
+    out([
+        'ok' => false,
+        'command' => $command,
+        'error' => [
+            'error_code' => classifyMysqlBootstrapFailure($e),
+            'message' => $e->getMessage(),
+            'host' => (string) ($dbConfig['host'] ?? ''),
+            'port' => (int) ($dbConfig['port'] ?? 0),
+            'next_action' => 'run_deployment_check_and_fix_mysql_connectivity',
+        ],
+    ], 2);
+}
+
 function futureCommandResponse(string $command): never
 {
     out([
@@ -195,8 +209,12 @@ if ($command === 'deployment:check') {
     out($result + ['command' => 'deployment:check'], $exitCode);
 }
 
-$storage = new MySqlStorage(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
-$storage->initSchema();
+try {
+    $storage = new MySqlStorage(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
+    $storage->initSchema();
+} catch (Throwable $e) {
+    mysqlBootstrapFailure($e, $command, $dbConfig);
+}
 
 $sourceAdapter = new StubSourceAdapter();
 $targetAdapter = new StubTargetAdapter();

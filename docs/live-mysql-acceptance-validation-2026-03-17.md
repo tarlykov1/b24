@@ -94,3 +94,7 @@ E. remaining blockers
 F. final verdict
 - **FAIL** (cannot mark acceptance PASS).
 - Build is **not yet accepted for first real offline portable MySQL-only deployment** based on this run.
+
+## Post-remediation follow-up
+- See `docs/remediation-note-2026-03-17.md` for implemented targeted fixes.
+- Use `docs/live-mysql-acceptance-rerun-checklist.md` for the next reproducible rerun.

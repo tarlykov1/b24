@@ -18,21 +18,8 @@ use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 use MigrationModule\Support\DbConfig;
 
-$vendorAutoload = __DIR__ . '/../../../../vendor/autoload.php';
-if (is_file($vendorAutoload)) {
-    require_once $vendorAutoload;
-} else {
-    spl_autoload_register(static function (string $class): void {
-        $prefix = 'MigrationModule\\';
-        if (str_starts_with($class, $prefix)) {
-            $relative = str_replace('\\', '/', substr($class, strlen($prefix)));
-            $file = __DIR__ . '/../../src/' . $relative . '.php';
-            if (is_file($file)) {
-                require_once $file;
-            }
-        }
-    });
-}
+require_once __DIR__ . '/../../../bootstrap.php';
+migration_module_bootstrap(dirname(__DIR__, 4));
 
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
