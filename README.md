@@ -120,3 +120,5 @@ Compatibility boundary note: repository still contains legacy cutover/orchestrat
   `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CHARSET`, `DB_COLLATION`.
 - Installer and runtime share the same DB config source and schema (`db/mysql_platform_schema.sql`).
 - Readiness check command: `php bin/migration-module deployment:check`.
+- Vendor-less/offline layout is supported for web entrypoint bootstrap (`web/index.php`) using built-in fallback autoload.
+- On MySQL bootstrap failure, lifecycle CLI commands return structured JSON errors with deterministic non-zero exit code instead of fatal exit 255.
