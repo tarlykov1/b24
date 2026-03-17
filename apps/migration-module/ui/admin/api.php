@@ -18,7 +18,7 @@ use MigrationModule\Prototype\Adapter\StubSourceAdapter;
 use MigrationModule\Prototype\Adapter\StubTargetAdapter;
 use MigrationModule\Support\DbConfig;
 
-require_once __DIR__ . '/../../../bootstrap.php';
+require_once __DIR__ . '/../../bootstrap.php';
 migration_module_bootstrap(dirname(__DIR__, 4));
 
 header('X-Frame-Options: DENY');
@@ -129,21 +129,32 @@ if (str_starts_with($path, '/install/')) {
     $wizard = new InstallWizardService();
     $config = is_array($query['config'] ?? null) ? $query['config'] : [];
 
-    if ($path === '/install/check-connection') {
-        $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
-    } elseif ($path === '/install/init-schema') {
-        $mysql = (array) ($config['mysql'] ?? []);
-        $dbCfg = DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4));
-        $pdo = new PDO(DbConfig::dsn($dbCfg), (string) $dbCfg['user'], (string) $dbCfg['password']);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
-    } elseif ($path === '/install/generate-config') {
-        $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
-        $mysql = (array) ($config['mysql'] ?? []);
-        $payload = ['mysql' => DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4))];
-        $response = $wizard->generateConfig($payload, $outputPath);
-    } else {
-        $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
+    try {
+        if ($path === '/install/check-connection') {
+            $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
+        } elseif ($path === '/install/init-schema') {
+            $mysql = (array) ($config['mysql'] ?? []);
+            $dbCfg = DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4));
+            $pdo = new PDO(DbConfig::dsn($dbCfg), (string) $dbCfg['user'], (string) $dbCfg['password']);
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
+        } elseif ($path === '/install/generate-config') {
+            $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
+            $mysql = (array) ($config['mysql'] ?? []);
+            $payload = ['mysql' => DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4))];
+            $response = $wizard->generateConfig($payload, $outputPath);
+        } else {
+            $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
+        }
+    } catch (Throwable $e) {
+        $response = [
+            'ok' => false,
+            'status' => 'fail',
+            'code' => 'installer_mysql_bootstrap_failed',
+            'error' => [
+                'message' => $e->getMessage(),
+            ],
+        ];
     }
 
     header('Content-Type: application/json; charset=utf-8');
