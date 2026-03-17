@@ -41,6 +41,7 @@ Honest behavior:
 
 ## Command contract
 All commands return JSON and non-zero exit on runtime errors.
+Expected operator errors (missing args, invalid JSON payloads, unknown freeze session, invalid transitions, completion gate denial) are returned as structured machine-readable JSON under `error`.
 
 - `cutover:prepare --job-id --freeze-id --source-instance-id --target-instance-id --actor [--meta-json]`
 - `cutover:readiness --job-id --freeze-id --signals-json`
@@ -71,6 +72,7 @@ All commands return JSON and non-zero exit on runtime errors.
         "subsystem": "throttling",
         "evidence": "risk=81",
         "recommended_action": "resolve_rate_limit_risk",
+        "provenance": "manual_input",
         "freeze_activation_allowed": true
       }
     ]
@@ -129,11 +131,33 @@ All commands return JSON and non-zero exit on runtime errors.
 }
 ```
 
+
+### Completion denied (gate)
+```json
+{
+  "ok": false,
+  "command": "cutover:complete",
+  "error": {
+    "error_code": "complete_gate_denied",
+    "current_state": "ready_for_go_live",
+    "latest_verdict": "operator_review_required",
+    "blockers": ["verdict_not_go_live_approved"],
+    "next_action": "run_cutover_verdict_and_resolve_blockers"
+  }
+}
+```
+
 ## Troubleshooting matrix
 - `invalid_freeze_transition:*`: wrong phase ordering. Use `cutover:freeze:status` and continue from persisted state.
 - `delta_not_allowed_in_state:*`: freeze not active/armed correctly.
 - `verification_not_allowed`: final sync phase not reached.
 - `resume_allowed_only_from_blocked`: resume command misuse.
+
+
+## Legacy cutover path boundary
+- `cutover:*` commands in this document are the authoritative freeze-window finalization flow.
+- Older non-freeze cutover artifacts remain in repository for compatibility/testing, but are non-authoritative for go-live finalization decisions.
+- When both legacy and freeze-window artifacts exist, operators should use freeze-window status/verdict as source of truth.
 
 ## Limitations and known risks
 - Global source write-lock is not enforced by runtime itself.

@@ -101,3 +101,5 @@ Key guarantees:
 - Honest freeze semantics: mutation detection + policy enforcement, not an implicit global Bitrix write lock.
 
 See full operator guide: `docs/cutover-finalization.md`.
+
+Compatibility boundary note: repository still contains legacy cutover/orchestrator artifacts for backward compatibility, but freeze-window finalization (`cutover:*`) is the authoritative path for final go-live gating.

@@ -98,6 +98,68 @@ function tableExists(PDO $pdo, string $table): bool
     }
 }
 
+
+function requiredOption(array $options, string $key, string $command): string
+{
+    $value = (string) ($options[$key] ?? '');
+    if ($value === '') {
+        throw new RuntimeException('missing_required_argument:' . $key . ':' . $command);
+    }
+
+    return $value;
+}
+
+/** @return array<string,mixed> */
+function parseJsonOption(array $options, string $key, string $command): array
+{
+    if (!isset($options[$key])) {
+        return [];
+    }
+
+    $decoded = json_decode((string) $options[$key], true);
+    if (!is_array($decoded)) {
+        throw new RuntimeException('invalid_json_argument:' . $key . ':' . $command);
+    }
+
+    return $decoded;
+}
+
+function cutoverError(Throwable $e, string $command): never
+{
+    $raw = $e->getMessage();
+    $details = [];
+    if (str_starts_with($raw, 'complete_gate_denied:')) {
+        $json = substr($raw, strlen('complete_gate_denied:'));
+        $decoded = json_decode($json, true);
+        if (is_array($decoded)) {
+            $details = $decoded;
+        }
+    }
+
+    $code = $details['error_code'] ?? 'cutover_command_failed';
+    if ($details === []) {
+        if (str_starts_with($raw, 'missing_required_argument:')) {
+            [, $argName] = array_pad(explode(':', $raw, 3), 3, '');
+            $code = 'missing_required_argument';
+            $details = ['error_code' => $code, 'argument' => $argName, 'next_action' => 'provide_' . $argName];
+        } elseif (str_starts_with($raw, 'invalid_json_argument:')) {
+            [, $argName] = array_pad(explode(':', $raw, 3), 3, '');
+            $code = 'invalid_json_argument';
+            $details = ['error_code' => $code, 'argument' => $argName, 'next_action' => 'fix_json_payload'];
+        } elseif (str_starts_with($raw, 'freeze_session_not_found')) {
+            $code = 'freeze_session_not_found';
+            $details = ['error_code' => $code, 'next_action' => 'run_cutover_prepare'];
+        } elseif (str_starts_with($raw, 'duplicate_prepare_conflict:')) {
+            [, $state] = array_pad(explode(':', $raw, 2), 2, 'unknown');
+            $code = 'duplicate_prepare_conflict';
+            $details = ['error_code' => $code, 'current_state' => $state, 'next_action' => 'use_existing_session_or_abort'];
+        } else {
+            $details = ['error_code' => $code, 'message' => $raw];
+        }
+    }
+
+    out(['ok' => false, 'command' => $command, 'error' => $details], 2);
+}
 function futureCommandResponse(string $command): never
 {
     out([
@@ -206,6 +268,7 @@ if ($jobId !== '') {
     $storage->assertJobExists($jobId);
 }
 
+try {
 switch ($command) {
     case 'plan':
         out($runtime->plan($jobId));
@@ -274,43 +337,47 @@ switch ($command) {
         out(['plan' => $plan, 'mode' => $command === 'target:inspect' ? 'inspect' : 'plan']);
     case 'cutover:prepare':
         $freezeId = (string) ($options['freeze-id'] ?? ('freeze_' . bin2hex(random_bytes(4))));
-        $meta = isset($options['meta-json']) ? (json_decode((string) $options['meta-json'], true) ?: []) : [];
+        requiredOption($options, 'job-id', 'cutover:prepare');
+        $meta = parseJsonOption($options, 'meta-json', 'cutover:prepare');
         out($cutoverFinalization->prepare($freezeId, $jobId, (string) ($options['source-instance-id'] ?? 'source-prod'), (string) ($options['target-instance-id'] ?? 'target-clean'), (string) ($options['actor'] ?? 'operator'), $meta));
     case 'cutover:readiness':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
-        $signals = isset($options['signals-json']) ? (json_decode((string) $options['signals-json'], true) ?: []) : [];
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:readiness');
+        $signals = parseJsonOption($options, 'signals-json', 'cutover:readiness');
         out($cutoverFinalization->readiness($freezeId, $signals));
     case 'cutover:arm':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:arm');
         $domains = isset($options['protected-domains']) ? array_values(array_filter(explode(',', (string) $options['protected-domains']))) : ['users', 'tasks', 'crm', 'comments', 'files', 'permissions', 'custom_fields'];
         out($cutoverFinalization->arm($freezeId, (string) ($options['actor'] ?? 'operator'), (string) ($options['mode'] ?? 'advisory_freeze'), $domains));
     case 'cutover:freeze:start':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:freeze:start');
         $domains = isset($options['protected-domains']) ? array_values(array_filter(explode(',', (string) $options['protected-domains']))) : ['users', 'tasks', 'crm', 'comments', 'files', 'permissions', 'custom_fields'];
-        $mutations = isset($options['mutations-json']) ? (json_decode((string) $options['mutations-json'], true) ?: []) : [];
+        $mutations = parseJsonOption($options, 'mutations-json', 'cutover:freeze:start');
         out($cutoverFinalization->freezeStart($freezeId, (string) ($options['actor'] ?? 'operator'), (string) ($options['mode'] ?? 'advisory_freeze'), $domains, $mutations));
     case 'cutover:freeze:status':
-        out($cutoverFinalization->status((string) ($options['freeze-id'] ?? '')));
+        out($cutoverFinalization->status(requiredOption($options, 'freeze-id', 'cutover:freeze:status')));
     case 'cutover:delta:final':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
-        $baseline = isset($options['baseline-json']) ? (json_decode((string) $options['baseline-json'], true) ?: []) : [];
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:delta:final');
+        $baseline = parseJsonOption($options, 'baseline-json', 'cutover:delta:final');
         out($cutoverFinalization->finalDelta($freezeId, (string) ($options['actor'] ?? 'operator'), $baseline));
     case 'cutover:verify':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
-        $signals = isset($options['signals-json']) ? (json_decode((string) $options['signals-json'], true) ?: []): [];
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:verify');
+        $signals = parseJsonOption($options, 'signals-json', 'cutover:verify');
         out($cutoverFinalization->verify($freezeId, (string) ($options['actor'] ?? 'operator'), $signals));
     case 'cutover:verdict':
-        $freezeId = (string) ($options['freeze-id'] ?? '');
-        $ctx = isset($options['context-json']) ? (json_decode((string) $options['context-json'], true) ?: []): [];
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:verdict');
+        $ctx = parseJsonOption($options, 'context-json', 'cutover:verdict');
         out($cutoverFinalization->verdict($freezeId, $ctx));
     case 'cutover:abort':
-        out($cutoverFinalization->abort((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator'), (string) ($options['reason'] ?? 'operator_abort')));
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:abort');
+        out($cutoverFinalization->abort($freezeId, (string) ($options['actor'] ?? 'operator'), (string) ($options['reason'] ?? 'operator_abort')));
     case 'cutover:resume':
-        out($cutoverFinalization->resume((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator')));
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:resume');
+        out($cutoverFinalization->resume($freezeId, (string) ($options['actor'] ?? 'operator')));
     case 'cutover:complete':
+        $freezeId = requiredOption($options, 'freeze-id', 'cutover:complete');
         $override = (($options['override'] ?? '0') === '1');
-        $payload = isset($options['override-json']) ? (json_decode((string) $options['override-json'], true) ?: []) : [];
-        out($cutoverFinalization->complete((string) ($options['freeze-id'] ?? ''), (string) ($options['actor'] ?? 'operator'), $override, $payload));
+        $payload = parseJsonOption($options, 'override-json', 'cutover:complete');
+        out($cutoverFinalization->complete($freezeId, (string) ($options['actor'] ?? 'operator'), $override, $payload));
 
     case 'delta:plan':
         if (isset($options['scan-id'])) {
@@ -452,4 +519,11 @@ switch ($command) {
             futureCommandResponse($command);
         }
         out(['error' => 'unknown_command', 'command' => $command], 2);
+}
+} catch (Throwable $e) {
+    if (str_starts_with($command, 'cutover:')) {
+        cutoverError($e, $command);
+    }
+
+    out(['ok' => false, 'command' => $command, 'error' => $e->getMessage()], 2);
 }
