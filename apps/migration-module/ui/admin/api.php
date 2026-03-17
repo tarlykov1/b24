@@ -54,22 +54,7 @@ $auth = new AdminAuth();
 $query = array_merge($_GET, $_POST, json_decode((string) file_get_contents('php://input'), true) ?? []);
 
 
-$generatedConfigPath = __DIR__ . '/../../../../config/generated-install-config.json';
-if (is_file($generatedConfigPath)) {
-    $generated = json_decode((string) file_get_contents($generatedConfigPath), true);
-    if (is_array($generated)) {
-        $mysql = (array) ($generated['mysql'] ?? ($generated['platform']['mysql'] ?? []));
-        if ($mysql !== []) {
-            $_ENV['DB_HOST'] = (string) ($mysql['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
-            $_ENV['DB_PORT'] = (string) ($mysql['port'] ?? ($_ENV['DB_PORT'] ?? '3306'));
-            $_ENV['DB_NAME'] = (string) ($mysql['name'] ?? ($_ENV['DB_NAME'] ?? ''));
-            $_ENV['DB_USER'] = (string) ($mysql['user'] ?? ($_ENV['DB_USER'] ?? ''));
-            $_ENV['DB_PASSWORD'] = (string) ($mysql['password'] ?? ($_ENV['DB_PASSWORD'] ?? ''));
-            $_ENV['DB_CHARSET'] = (string) ($mysql['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
-            $_ENV['DB_COLLATION'] = (string) ($mysql['collation'] ?? ($_ENV['DB_COLLATION'] ?? 'utf8mb4_unicode_ci'));
-        }
-    }
-}
+$dbConfig = DbConfig::fromRuntimeSources([], dirname(__DIR__, 4));
 
 if ($path === '/stream') {
     http_response_code(501);
@@ -89,10 +74,9 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
         $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
     $service = new SystemCheckService($client);
-    $response = $service->check();
+    $response = $service->check($dbConfig);
     if ($path === '/metrics') {
         header('Content-Type: text/plain; version=0.0.4');
-        $dbConfig = DbConfig::fromEnvAndOverride();
         $pdoMetrics = new PDO(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
         $pdoMetrics->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $jobs = (int) $pdoMetrics->query('SELECT COUNT(*) FROM jobs')->fetchColumn();
@@ -162,14 +146,14 @@ if (str_starts_with($path, '/install/')) {
         $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
     } elseif ($path === '/install/init-schema') {
         $mysql = (array) ($config['mysql'] ?? []);
-        $dbCfg = DbConfig::fromEnvAndOverride($mysql);
+        $dbCfg = DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4));
         $pdo = new PDO(DbConfig::dsn($dbCfg), (string) $dbCfg['user'], (string) $dbCfg['password']);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
     } elseif ($path === '/install/generate-config') {
         $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
         $mysql = (array) ($config['mysql'] ?? []);
-        $payload = ['mysql' => DbConfig::fromEnvAndOverride($mysql)];
+        $payload = ['mysql' => DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4))];
         $response = $wizard->generateConfig($payload, $outputPath);
     } else {
         $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
@@ -203,7 +187,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$auth->validateCsrf($_SERVER['HTTP
     exit;
 }
 
-$dbConfig = DbConfig::fromEnvAndOverride();
 if ($dbConfig['name'] === '' || $dbConfig['user'] === '') {
     http_response_code(412);
     header('Content-Type: application/json; charset=utf-8');

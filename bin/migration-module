@@ -187,8 +187,15 @@ foreach ($futureNamespaces as $ns) {
 
 $configPath = (string) ($options['config'] ?? 'migration.config.yml');
 $config = (new ConfigLoader())->load($configPath);
-$dbConfig = DbConfig::fromEnvAndOverride((array) ($config['storage'] ?? []));
-$storage = new MySqlStorage(DbConfig::dsn($dbConfig));
+$dbConfig = DbConfig::fromRuntimeSources((array) ($config['storage'] ?? []), dirname(__DIR__));
+
+if ($command === 'deployment:check') {
+    $result = (new \MigrationModule\Application\Readiness\SystemCheckService())->check($dbConfig);
+    $exitCode = ($result['ok'] ?? false) ? 0 : 2;
+    out($result + ['command' => 'deployment:check'], $exitCode);
+}
+
+$storage = new MySqlStorage(DbConfig::dsn($dbConfig), (string) $dbConfig['user'], (string) $dbConfig['password']);
 $storage->initSchema();
 
 $sourceAdapter = new StubSourceAdapter();
@@ -242,12 +249,6 @@ if ($command === 'preflight') {
     out($report, $exit);
 }
 
-
-if ($command === 'deployment:check') {
-    $result = (new \MigrationModule\Application\Readiness\SystemCheckService())->check($dbConfig);
-    $exitCode = ($result['ok'] ?? false) ? 0 : 2;
-    out($result + ['command' => 'deployment:check'], $exitCode);
-}
 
 if (in_array($command, ['create-job', 'execute'], true)) {
     $strictMode = isset($options['strict']);
@@ -314,7 +315,7 @@ switch ($command) {
         $kind = str_replace('audit:', '', $command);
         out((new AuditDiscoveryService())->run($kind, isset($options['deep'])));
     case 'audit:velocity':
-        $auditDb = DbConfig::fromEnvAndOverride();
+        $auditDb = DbConfig::fromRuntimeSources([], dirname(__DIR__));
         $pdo = null;
         if ($auditDb['name'] !== '' && $auditDb['user'] !== '') {
             $pdo = new PDO(DbConfig::dsn($auditDb), (string) $auditDb['user'], (string) $auditDb['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);

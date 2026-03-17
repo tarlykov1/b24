@@ -40,6 +40,7 @@ final class InstallWizardService
     {
         $payload = [
             'generated_at' => date(DATE_ATOM),
+            'mysql' => $config['mysql'] ?? [],
             'platform' => $config['platform'] ?? [],
             'source' => $config['source'] ?? [],
             'target' => $config['target'] ?? [],
