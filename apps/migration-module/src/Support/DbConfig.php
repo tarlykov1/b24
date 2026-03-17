@@ -11,6 +11,7 @@ final class DbConfig
     /** @param array<string,mixed> $override */
     public static function fromRuntimeSources(array $override = [], string $projectRoot = ''): array
     {
+        $override = self::normalizeOverride($override);
         $artifact = self::loadArtifact($projectRoot);
 
         $env = [
@@ -36,6 +37,32 @@ final class DbConfig
         self::applyEnv($config);
 
         return $config;
+    }
+
+    /** @param array<string,mixed> $override
+     * @return array<string,mixed>
+     */
+    private static function normalizeOverride(array $override): array
+    {
+        if ($override === []) {
+            return [];
+        }
+
+        $host = strtolower(trim((string) ($override['host'] ?? '')));
+        $name = strtolower(trim((string) ($override['name'] ?? '')));
+        $user = strtolower(trim((string) ($override['user'] ?? '')));
+        $password = strtolower(trim((string) ($override['password'] ?? '')));
+
+        $hostIsPlaceholder = in_array($host, ['', '127.0.0.1', 'localhost'], true);
+        $nameIsPlaceholder = in_array($name, ['', 'bitrix_migration'], true);
+        $userIsPlaceholder = in_array($user, ['', 'migration_user'], true);
+        $passwordIsPlaceholder = in_array($password, ['', 'change_me'], true);
+
+        if ($hostIsPlaceholder && $nameIsPlaceholder && $userIsPlaceholder && $passwordIsPlaceholder) {
+            return [];
+        }
+
+        return $override;
     }
 
     /** @param array<string,mixed> $config */
