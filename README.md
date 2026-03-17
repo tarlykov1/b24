@@ -15,7 +15,7 @@ This repository provides a **stable migration runtime** for one practical scenar
 Core runtime components:
 - CLI runtime (`bin/migration-module`)
 - Deterministic execution engine (`PrototypeRuntime` + execution graph/batches)
-- SQLite runtime state (jobs, queue, mapping, checkpoints, logs, diff, integrity, state)
+- MySQL runtime state (jobs, queue, mapping, checkpoints, logs, diff, integrity, state)
 - Audit/discovery integration (`audit:*`)
 - Delta planning/execution (`delta:*`) including /upload baseline reuse and cutover checks
 - Verification (`verify:*` + report/status)
@@ -103,3 +103,9 @@ Key guarantees:
 See full operator guide: `docs/cutover-finalization.md`.
 
 Compatibility boundary note: repository still contains legacy cutover/orchestrator artifacts for backward compatibility, but freeze-window finalization (`cutover:*`) is the authoritative path for final go-live gating.
+
+
+## Runtime storage backend
+- SQLite is no longer supported.
+- Configure only MySQL via `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CHARSET`, `DB_COLLATION`.
+- Runtime and installer both require PDO MySQL and external MySQL connectivity.

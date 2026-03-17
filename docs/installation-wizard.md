@@ -33,3 +33,8 @@ The installer is available at `apps/migration-module/ui/admin/install.php` and m
 - `db:status`
 
 All return JSON and non-zero code on blockers.
+
+## MySQL-only requirements
+- Installer accepts only MySQL settings (`host`, `port`, `db`, `user`, `password`, `charset`, `collation`).
+- Installer verifies: TCP reachability, `SELECT 1`, and install-time DDL rights (`CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX`).
+- Runtime/state storage uses MySQL only; SQLite backend is removed from installer flow.

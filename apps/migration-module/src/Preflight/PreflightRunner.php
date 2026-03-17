@@ -78,7 +78,7 @@ final class PreflightRunner
             return;
         }
 
-        $pdo->exec('CREATE TABLE IF NOT EXISTS preflight_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, config_hash TEXT NOT NULL, result_json TEXT NOT NULL)');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS preflight_reports (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, timestamp DATETIME NOT NULL, config_hash VARCHAR(64) NOT NULL, result_json LONGTEXT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
         $stmt = $pdo->prepare('INSERT INTO preflight_reports(timestamp, config_hash, result_json) VALUES(:timestamp,:config_hash,:result_json)');
         $stmt->execute([
             'timestamp' => date(DATE_ATOM),

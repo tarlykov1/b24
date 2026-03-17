@@ -20,7 +20,14 @@ cutoff_policy: strict
 throttling_policy: conservative
 maintenance_window_policy: business_hours_safe
 storage:
-  path: .prototype/migration.sqlite
+  driver: mysql
+  host: 127.0.0.1
+  port: 3306
+  name: bitrix_migration
+  user: migration_user
+  password: change_me
+  charset: utf8mb4
+  collation: utf8mb4_unicode_ci
 source_db:
   dsn: ''
   user: ''
