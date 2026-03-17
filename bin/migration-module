@@ -186,7 +186,15 @@ foreach ($futureNamespaces as $ns) {
 
 $configPath = (string) ($options['config'] ?? 'migration.config.yml');
 $config = (new ConfigLoader())->load($configPath);
-$storage = new SqliteStorage((string) ($config['storage']['path'] ?? '.prototype/migration.sqlite'));
+$storageDsn = (string) ($config['storage']['dsn'] ?? '');
+if ($storageDsn === '') {
+    $storageHost = (string) ($config['storage']['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
+    $storagePort = (int) ($config['storage']['port'] ?? ($_ENV['DB_PORT'] ?? 3306));
+    $storageName = (string) ($config['storage']['name'] ?? ($_ENV['DB_NAME'] ?? ''));
+    $storageCharset = (string) ($config['storage']['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+    $storageDsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $storageHost, $storagePort, $storageName, $storageCharset);
+}
+$storage = new SqliteStorage($storageDsn);
 $storage->initSchema();
 
 $sourceAdapter = new StubSourceAdapter();

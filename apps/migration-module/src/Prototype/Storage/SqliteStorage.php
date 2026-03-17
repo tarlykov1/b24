@@ -18,13 +18,14 @@ final class SqliteStorage
             mkdir($dir, 0777, true);
         }
 
-        $this->pdo = new PDO('sqlite:' . $path);
+        $dsn = $this->buildMysqlDsn($path);
+        $this->pdo = new PDO($dsn, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
 
     public function initSchema(): void
     {
-        $sql = file_get_contents(__DIR__ . '/../../../../../db/prototype_schema.sql');
+        $sql = file_get_contents(__DIR__ . '/../../../../../db/mysql_platform_schema.sql');
         $this->pdo->exec((string) $sql);
     }
 
@@ -104,7 +105,7 @@ final class SqliteStorage
 
     public function saveMapping(string $jobId, string $entityType, string $sourceId, string $targetId, string $checksum, string $status, int $conflict): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO entity_map(job_id, entity_type, source_id, target_id, checksum, status, conflict_marker, updated_at) VALUES(:job_id,:entity_type,:source_id,:target_id,:checksum,:status,:conflict,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO entity_map(job_id, entity_type, source_id, target_id, checksum, status, conflict_marker, updated_at) VALUES(:job_id,:entity_type,:source_id,:target_id,:checksum,:status,:conflict,CURRENT_TIMESTAMP)');
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'source_id' => $sourceId, 'target_id' => $targetId, 'checksum' => $checksum, 'status' => $status, 'conflict' => $conflict]);
     }
 
@@ -118,7 +119,7 @@ final class SqliteStorage
 
     public function saveCheckpoint(string $jobId, string $entityType, string $lastSourceId): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO checkpoint(job_id, entity_type, last_source_id, updated_at) VALUES(:job_id,:entity_type,:last_source_id,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO checkpoint(job_id, entity_type, last_source_id, updated_at) VALUES(:job_id,:entity_type,:last_source_id,CURRENT_TIMESTAMP)');
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'last_source_id' => $lastSourceId]);
     }
 
@@ -162,7 +163,7 @@ final class SqliteStorage
     /** @param array<string,mixed> $state */
     public function saveDistributedControlPlaneState(string $jobId, array $state): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO distributed_control_plane(job_id, state_json, updated_at) VALUES(:job_id,:state_json,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO distributed_control_plane(job_id, state_json, updated_at) VALUES(:job_id,:state_json,CURRENT_TIMESTAMP)');
         $stmt->execute(['job_id' => $jobId, 'state_json' => (string) json_encode($state, JSON_UNESCAPED_UNICODE)]);
     }
 
@@ -194,7 +195,7 @@ final class SqliteStorage
 
     public function saveDeltaCursor(string $jobId, string $entityType, ?string $lastSyncTimestamp, ?string $lastEntityId, ?string $watermark, string $phase): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO delta_cursors(job_id, entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at) VALUES(:job_id,:entity_type,:last_sync_timestamp,:last_entity_id,:watermark,:phase,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO delta_cursors(job_id, entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at) VALUES(:job_id,:entity_type,:last_sync_timestamp,:last_entity_id,:watermark,:phase,CURRENT_TIMESTAMP)');
         $stmt->execute([
             'job_id' => $jobId,
             'entity_type' => $entityType,
@@ -216,7 +217,7 @@ final class SqliteStorage
 
     public function upsertDeltaState(string $jobId, string $entityType, string $entityId, string $fingerprint, ?string $ownerKey, ?string $updatedAt, int $deleted): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO delta_entity_state(job_id, entity_type, entity_id, fingerprint, owner_key, updated_at, deleted, last_seen_at) VALUES(:job_id,:entity_type,:entity_id,:fingerprint,:owner_key,:updated_at,:deleted,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO delta_entity_state(job_id, entity_type, entity_id, fingerprint, owner_key, updated_at, deleted, last_seen_at) VALUES(:job_id,:entity_type,:entity_id,:fingerprint,:owner_key,:updated_at,:deleted,CURRENT_TIMESTAMP)');
         $stmt->execute([
             'job_id' => $jobId,
             'entity_type' => $entityType,
@@ -326,7 +327,7 @@ final class SqliteStorage
     }
     public function saveDeltaChange(string $jobId, string $scanId, string $phase, string $entityType, string $entityId, string $action, string $fingerprint, array $payload): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO delta_changes(job_id, scan_id, phase, entity_type, entity_id, action, fingerprint, payload, status) VALUES(:job_id,:scan_id,:phase,:entity_type,:entity_id,:action,:fingerprint,:payload,:status)');
+        $stmt = $this->pdo->prepare('INSERT IGNORE INTO delta_changes(job_id, scan_id, phase, entity_type, entity_id, action, fingerprint, payload, status) VALUES(:job_id,:scan_id,:phase,:entity_type,:entity_id,:action,:fingerprint,:payload,:status)');
         $stmt->execute([
             'job_id' => $jobId,
             'scan_id' => $scanId,
@@ -469,7 +470,7 @@ final class SqliteStorage
     public function saveCursor(string $jobId, string $entityType, string $tableName, string $strategy, ?string $lastProcessedId, ?string $lastProcessedTimestamp, ?string $batchStart, ?string $batchEnd): void
     {
         $this->assertJobExists($jobId);
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO cursors(job_id, entity_type, table_name, strategy, last_processed_id, last_processed_timestamp, batch_start, batch_end, updated_at) VALUES(:job_id,:entity_type,:table_name,:strategy,:last_processed_id,:last_processed_timestamp,:batch_start,:batch_end,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO cursors(job_id, entity_type, table_name, strategy, last_processed_id, last_processed_timestamp, batch_start, batch_end, updated_at) VALUES(:job_id,:entity_type,:table_name,:strategy,:last_processed_id,:last_processed_timestamp,:batch_start,:batch_end,CURRENT_TIMESTAMP)');
         $stmt->execute([
             'job_id' => $jobId,
             'entity_type' => $entityType,
@@ -517,10 +518,10 @@ final class SqliteStorage
 
     public function saveMigrationPlan(string $jobId, string $planId, string $planHash, string $configHash, array $plan): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO migration_jobs(job_id, plan_id, mode, status, updated_at) VALUES(:job_id,:plan_id,:mode,:status,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO migration_jobs(job_id, plan_id, mode, status, updated_at) VALUES(:job_id,:plan_id,:mode,:status,CURRENT_TIMESTAMP)')
             ->execute(['job_id' => $jobId, 'plan_id' => $planId, 'mode' => 'deterministic', 'status' => 'planned']);
 
-        $this->pdo->prepare('INSERT OR REPLACE INTO migration_plans(plan_id, job_id, plan_hash, config_hash, plan_json, created_at) VALUES(:plan_id,:job_id,:plan_hash,:config_hash,:plan_json,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO migration_plans(plan_id, job_id, plan_hash, config_hash, plan_json, created_at) VALUES(:plan_id,:job_id,:plan_hash,:config_hash,:plan_json,CURRENT_TIMESTAMP)')
             ->execute([
                 'plan_id' => $planId,
                 'job_id' => $jobId,
@@ -547,7 +548,7 @@ final class SqliteStorage
 
     public function saveExecutionBatch(string $jobId, string $planId, string $batchId, string $phase, string $entityType, int $stableOrder, string $status): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO execution_batches(batch_id, job_id, plan_id, phase, entity_type, stable_order, status, updated_at) VALUES(:batch_id,:job_id,:plan_id,:phase,:entity_type,:stable_order,:status,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO execution_batches(batch_id, job_id, plan_id, phase, entity_type, stable_order, status, updated_at) VALUES(:batch_id,:job_id,:plan_id,:phase,:entity_type,:stable_order,:status,CURRENT_TIMESTAMP)')
             ->execute([
                 'batch_id' => $batchId,
                 'job_id' => $jobId,
@@ -561,7 +562,7 @@ final class SqliteStorage
 
     public function saveExecutionStep(array $record): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO execution_steps(step_id, job_id, plan_id, phase, batch_id, entity_type, source_id, reserved_target_id, actual_target_id, operation_type, payload_hash, status, attempt_count, verification_status, error_class, error_code, diagnostic_blob, started_at, finished_at) VALUES(:step_id,:job_id,:plan_id,:phase,:batch_id,:entity_type,:source_id,:reserved_target_id,:actual_target_id,:operation_type,:payload_hash,:status,:attempt_count,:verification_status,:error_class,:error_code,:diagnostic_blob,:started_at,:finished_at)')
+        $this->pdo->prepare('REPLACE INTO execution_steps(step_id, job_id, plan_id, phase, batch_id, entity_type, source_id, reserved_target_id, actual_target_id, operation_type, payload_hash, status, attempt_count, verification_status, error_class, error_code, diagnostic_blob, started_at, finished_at) VALUES(:step_id,:job_id,:plan_id,:phase,:batch_id,:entity_type,:source_id,:reserved_target_id,:actual_target_id,:operation_type,:payload_hash,:status,:attempt_count,:verification_status,:error_class,:error_code,:diagnostic_blob,:started_at,:finished_at)')
             ->execute($record);
     }
 
@@ -573,7 +574,7 @@ final class SqliteStorage
 
     public function saveIdReservation(array $record): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO id_reservations(plan_id, entity_type, source_id, requested_target_id, reserved_target_id, policy, reason, updated_at) VALUES(:plan_id,:entity_type,:source_id,:requested_target_id,:reserved_target_id,:policy,:reason,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO id_reservations(plan_id, entity_type, source_id, requested_target_id, reserved_target_id, policy, reason, updated_at) VALUES(:plan_id,:entity_type,:source_id,:requested_target_id,:reserved_target_id,:policy,:reason,CURRENT_TIMESTAMP)')
             ->execute($record);
     }
 
@@ -588,7 +589,7 @@ final class SqliteStorage
 
     public function saveRelationMap(string $planId, string $relationKey, string $ownerEntityType, string $ownerSourceId, string $targetEntityType, string $targetSourceId, ?string $targetResolvedId, string $status, ?string $reason): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO relation_map(plan_id, relation_key, owner_entity_type, owner_source_id, target_entity_type, target_source_id, target_resolved_id, status, reason) VALUES(:plan_id,:relation_key,:owner_entity_type,:owner_source_id,:target_entity_type,:target_source_id,:target_resolved_id,:status,:reason)')
+        $this->pdo->prepare('REPLACE INTO relation_map(plan_id, relation_key, owner_entity_type, owner_source_id, target_entity_type, target_source_id, target_resolved_id, status, reason) VALUES(:plan_id,:relation_key,:owner_entity_type,:owner_source_id,:target_entity_type,:target_source_id,:target_resolved_id,:status,:reason)')
             ->execute([
                 'plan_id' => $planId,
                 'relation_key' => $relationKey,
@@ -610,7 +611,7 @@ final class SqliteStorage
 
     public function saveCheckpointState(string $jobId, string $planId, string $phase, ?string $cursor, array $payload): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO checkpoint_state(job_id, plan_id, phase, cursor, payload_json, updated_at) VALUES(:job_id,:plan_id,:phase,:cursor,:payload_json,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO checkpoint_state(job_id, plan_id, phase, cursor, payload_json, updated_at) VALUES(:job_id,:plan_id,:phase,:cursor,:payload_json,CURRENT_TIMESTAMP)')
             ->execute(['job_id' => $jobId, 'plan_id' => $planId, 'phase' => $phase, 'cursor' => $cursor, 'payload_json' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
     }
 
@@ -624,7 +625,7 @@ final class SqliteStorage
 
     public function saveReplayGuard(string $idempotencyKey, string $jobId, string $planId, string $phase, string $entityType, string $sourceId, string $payloadHash, string $status): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO replay_guard(idempotency_key, job_id, plan_id, phase, entity_type, source_id, payload_hash, status) VALUES(:idempotency_key,:job_id,:plan_id,:phase,:entity_type,:source_id,:payload_hash,:status)')
+        $this->pdo->prepare('REPLACE INTO replay_guard(idempotency_key, job_id, plan_id, phase, entity_type, source_id, payload_hash, status) VALUES(:idempotency_key,:job_id,:plan_id,:phase,:entity_type,:source_id,:payload_hash,:status)')
             ->execute([
                 'idempotency_key' => $idempotencyKey,
                 'job_id' => $jobId,
@@ -648,13 +649,13 @@ final class SqliteStorage
 
     public function upsertSyncState(array $record): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO sync_state(sync_id, job_id, entity_type, source_id, target_id, direction, last_synced_at, last_hash, source_version, target_version, sync_state, mode, updated_at) VALUES(:sync_id,:job_id,:entity_type,:source_id,:target_id,:direction,:last_synced_at,:last_hash,:source_version,:target_version,:sync_state,:mode,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO sync_state(sync_id, job_id, entity_type, source_id, target_id, direction, last_synced_at, last_hash, source_version, target_version, sync_state, mode, updated_at) VALUES(:sync_id,:job_id,:entity_type,:source_id,:target_id,:direction,:last_synced_at,:last_hash,:source_version,:target_version,:sync_state,:mode,CURRENT_TIMESTAMP)')
             ->execute($record);
     }
 
     public function recordSyncConflict(string $conflictId, ?string $syncId, string $jobId, string $entityType, string $sourceId, ?string $targetId, string $conflictType, string $resolutionStrategy, array $payload): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO sync_conflicts(conflict_id, sync_id, job_id, entity_type, source_id, target_id, conflict_type, resolution_strategy, conflict_payload, status, created_at) VALUES(:conflict_id,:sync_id,:job_id,:entity_type,:source_id,:target_id,:conflict_type,:resolution_strategy,:conflict_payload,"open",CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO sync_conflicts(conflict_id, sync_id, job_id, entity_type, source_id, target_id, conflict_type, resolution_strategy, conflict_payload, status, created_at) VALUES(:conflict_id,:sync_id,:job_id,:entity_type,:source_id,:target_id,:conflict_type,:resolution_strategy,:conflict_payload,"open",CURRENT_TIMESTAMP)')
             ->execute([
                 'conflict_id' => $conflictId,
                 'sync_id' => $syncId,
@@ -696,7 +697,7 @@ final class SqliteStorage
 
     public function recordSyncDrift(string $driftId, string $jobId, string $entityType, ?string $sourceId, ?string $targetId, string $category, string $severity, array $payload): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO sync_drift(drift_id, job_id, entity_type, source_id, target_id, drift_category, severity, drift_payload, status, detected_at) VALUES(:drift_id,:job_id,:entity_type,:source_id,:target_id,:drift_category,:severity,:drift_payload,"open",CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO sync_drift(drift_id, job_id, entity_type, source_id, target_id, drift_category, severity, drift_payload, status, detected_at) VALUES(:drift_id,:job_id,:entity_type,:source_id,:target_id,:drift_category,:severity,:drift_payload,"open",CURRENT_TIMESTAMP)')
             ->execute([
                 'drift_id' => $driftId,
                 'job_id' => $jobId,
@@ -727,7 +728,7 @@ final class SqliteStorage
 
     public function appendSyncLedger(array $record): void
     {
-        $this->pdo->prepare('INSERT OR REPLACE INTO sync_ledger(sync_id, ledger_id, job_id, entity_type, source_id, target_id, action, direction, checksum_before, checksum_after, metadata_json, created_at) VALUES(:sync_id,:ledger_id,:job_id,:entity_type,:source_id,:target_id,:action,:direction,:checksum_before,:checksum_after,:metadata_json,CURRENT_TIMESTAMP)')
+        $this->pdo->prepare('REPLACE INTO sync_ledger(sync_id, ledger_id, job_id, entity_type, source_id, target_id, action, direction, checksum_before, checksum_after, metadata_json, created_at) VALUES(:sync_id,:ledger_id,:job_id,:entity_type,:source_id,:target_id,:action,:direction,:checksum_before,:checksum_after,:metadata_json,CURRENT_TIMESTAMP)')
             ->execute($record);
     }
 
@@ -794,7 +795,7 @@ final class SqliteStorage
     /** @param array<int,array<string,mixed>> $rows */
     public function insertBaselineFiles(string $baselineId, array $rows): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO upload_baseline_files(baseline_id, relative_path, size_bytes, mtime_epoch, checksum_sha256, fingerprint, scan_ts, source_present, target_present, reuse_eligible, conflict_flag) VALUES(:baseline_id,:relative_path,:size_bytes,:mtime_epoch,:checksum_sha256,:fingerprint,:scan_ts,:source_present,:target_present,:reuse_eligible,:conflict_flag)');
+        $stmt = $this->pdo->prepare('REPLACE INTO upload_baseline_files(baseline_id, relative_path, size_bytes, mtime_epoch, checksum_sha256, fingerprint, scan_ts, source_present, target_present, reuse_eligible, conflict_flag) VALUES(:baseline_id,:relative_path,:size_bytes,:mtime_epoch,:checksum_sha256,:fingerprint,:scan_ts,:source_present,:target_present,:reuse_eligible,:conflict_flag)');
         foreach ($rows as $row) {
             $stmt->execute(['baseline_id' => $baselineId] + $row);
         }
@@ -842,7 +843,7 @@ final class SqliteStorage
     /** @param array<int,array<string,mixed>> $items */
     public function insertDeltaScanItems(string $scanId, array $items): void
     {
-        $stmt = $this->pdo->prepare('INSERT OR REPLACE INTO upload_delta_scan_items(scan_id, path, status, reason, source_size, target_size, source_mtime, target_mtime, referenced, confidence) VALUES(:scan_id,:path,:status,:reason,:source_size,:target_size,:source_mtime,:target_mtime,:referenced,:confidence)');
+        $stmt = $this->pdo->prepare('REPLACE INTO upload_delta_scan_items(scan_id, path, status, reason, source_size, target_size, source_mtime, target_mtime, referenced, confidence) VALUES(:scan_id,:path,:status,:reason,:source_size,:target_size,:source_mtime,:target_mtime,:referenced,:confidence)');
         foreach ($items as $item) {
             $stmt->execute(['scan_id' => $scanId] + $item);
         }
@@ -974,5 +975,20 @@ final class SqliteStorage
         $status = $stmt->fetchColumn();
         $summary['status'] = $status ?: 'unknown';
         return $summary;
+    }
+
+
+    private function buildMysqlDsn(string $legacy): string
+    {
+        if (str_starts_with($legacy, 'mysql:')) {
+            return $legacy;
+        }
+
+        $host = (string) ($_ENV['DB_HOST'] ?? '127.0.0.1');
+        $port = (int) ($_ENV['DB_PORT'] ?? 3306);
+        $db = (string) ($_ENV['DB_NAME'] ?? '');
+        $charset = (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4');
+
+        return sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $host, $port, $db, $charset);
     }
 }

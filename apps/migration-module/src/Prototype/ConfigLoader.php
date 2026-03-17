@@ -40,7 +40,16 @@ final class ConfigLoader
             }
         }
 
-        $config['storage'] = $config['storage'] ?? ['path' => '.prototype/migration.sqlite'];
+        $config['storage'] = $config['storage'] ?? [
+            'driver' => 'mysql',
+            'host' => (string) ($_ENV['DB_HOST'] ?? '127.0.0.1'),
+            'port' => (int) ($_ENV['DB_PORT'] ?? 3306),
+            'name' => (string) ($_ENV['DB_NAME'] ?? ''),
+            'user' => (string) ($_ENV['DB_USER'] ?? ''),
+            'password' => (string) ($_ENV['DB_PASSWORD'] ?? ''),
+            'charset' => (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4'),
+            'collation' => (string) ($_ENV['DB_COLLATION'] ?? 'utf8mb4_unicode_ci'),
+        ];
         $config['user_policy'] = $config['user_policy'] ?? [
             'cutoff_date' => '2024-01-01T00:00:00+00:00',
             'inactive_strategy' => 'preserve_without_activation',

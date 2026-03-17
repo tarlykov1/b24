@@ -70,15 +70,11 @@ if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
         $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
     $service = new SystemCheckService($client);
-    $response = $service->check(__DIR__ . '/../../../../.prototype/migration.sqlite');
+    $response = $service->check();
     if ($path === '/metrics') {
         header('Content-Type: text/plain; version=0.0.4');
-        if (!is_file(__DIR__ . '/../../../../.prototype/migration.sqlite')) {
-            echo "migration_metrics_status{status=\"not_available\"} 1\n";
-            exit;
-        }
-
-        $pdoMetrics = new PDO('sqlite:' . __DIR__ . '/../../../../.prototype/migration.sqlite');
+        $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($_ENV['DB_HOST'] ?? '127.0.0.1'), (int) ($_ENV['DB_PORT'] ?? 3306), (string) ($_ENV['DB_NAME'] ?? ''), (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+        $pdoMetrics = new PDO($dsn, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
         $pdoMetrics->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $jobs = (int) $pdoMetrics->query('SELECT COUNT(*) FROM jobs')->fetchColumn();
         $running = (int) $pdoMetrics->query("SELECT COUNT(*) FROM jobs WHERE status='running'")->fetchColumn();
@@ -143,11 +139,14 @@ if (str_starts_with($path, '/install/')) {
     $wizard = new InstallWizardService();
     $config = is_array($query['config'] ?? null) ? $query['config'] : [];
 
-    if ($path === '/install/check') {
-        $response = $wizard->check($config);
-    } elseif ($path === '/install/validate') {
-        $lint = (new ConfigLintService())->lint($config);
-        $response = ['ok' => $lint['ok'], 'validation' => $lint];
+    if ($path === '/install/check-connection') {
+        $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
+    } elseif ($path === '/install/init-schema') {
+        $mysql = (array) ($config['mysql'] ?? []);
+        $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($mysql['host'] ?? '127.0.0.1'), (int) ($mysql['port'] ?? 3306), (string) ($mysql['name'] ?? ''), (string) ($mysql['charset'] ?? 'utf8mb4'));
+        $pdo = new PDO($dsn, (string) ($mysql['user'] ?? ''), (string) ($mysql['password'] ?? ''));
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
     } elseif ($path === '/install/generate-config') {
         $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
         $response = $wizard->generateConfig($config, $outputPath);
@@ -183,17 +182,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$auth->validateCsrf($_SERVER['HTTP
     exit;
 }
 
-$dbPath = __DIR__ . '/../../../../.prototype/migration.sqlite';
 $pdo = null;
 $databaseUrl = (string) ($_ENV['MIGRATION_DATABASE_URL'] ?? '');
-
-if ($databaseUrl !== '') {
-    $pdo = new PDO($databaseUrl);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} elseif (is_file($dbPath)) {
-    $pdo = new PDO('sqlite:' . $dbPath);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+if ($databaseUrl === '') {
+    $databaseUrl = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', (string) ($_ENV['DB_HOST'] ?? '127.0.0.1'), (int) ($_ENV['DB_PORT'] ?? 3306), (string) ($_ENV['DB_NAME'] ?? ''), (string) ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
 }
+$pdo = new PDO($databaseUrl, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 $security = new SecurityGovernanceService();
 $demoMode = (bool) filter_var((string) ($query['demo_mode'] ?? ($_ENV['MIGRATION_DEMO_MODE'] ?? '0')), FILTER_VALIDATE_BOOLEAN);
@@ -257,7 +252,7 @@ if ($path === '/audit/portal') {
     if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
         $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
     }
-    $response = (new SystemCheckService($client))->check($dbPath);
+    $response = (new SystemCheckService($client))->check();
 
 } else {
     if (preg_match('#^/control-center/jobs/([^/]+)$#', $path, $m) === 1) {
