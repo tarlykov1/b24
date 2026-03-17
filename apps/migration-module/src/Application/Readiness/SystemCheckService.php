@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace MigrationModule\Application\Readiness;
 
 use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
+use MigrationModule\Support\DbConfig;
 use PDO;
+use PDOException;
 use Throwable;
 
 final class SystemCheckService
@@ -19,12 +21,12 @@ final class SystemCheckService
      */
     public function check(array $dbConfig = []): array
     {
-        $host = (string) ($dbConfig['host'] ?? ($_ENV['DB_HOST'] ?? '127.0.0.1'));
-        $port = (int) ($dbConfig['port'] ?? ($_ENV['DB_PORT'] ?? 3306));
-        $name = (string) ($dbConfig['name'] ?? ($_ENV['DB_NAME'] ?? ''));
-        $user = (string) ($dbConfig['user'] ?? ($_ENV['DB_USER'] ?? ''));
-        $password = (string) ($dbConfig['password'] ?? ($_ENV['DB_PASSWORD'] ?? ''));
-        $charset = (string) ($dbConfig['charset'] ?? ($_ENV['DB_CHARSET'] ?? 'utf8mb4'));
+        $dbConfig = DbConfig::fromRuntimeSources($dbConfig);
+        $host = (string) $dbConfig['host'];
+        $port = (int) $dbConfig['port'];
+        $name = (string) $dbConfig['name'];
+        $user = (string) $dbConfig['user'];
+        $password = (string) $dbConfig['password'];
 
         $checks = [
             'pdo_mysql' => extension_loaded('pdo_mysql'),
@@ -36,18 +38,17 @@ final class SystemCheckService
         $errors = [];
 
         if ($checks['pdo_mysql']) {
-            $socket = @fsockopen($host, (int) $port, $errno, $errstr, 3.0);
+            $socket = @fsockopen($host, $port, $errno, $errstr, 3.0);
             if ($socket !== false) {
                 $checks['mysql_tcp_reachable'] = true;
                 fclose($socket);
             } else {
-                $errors[] = ['code' => 'mysql_tcp_unreachable', 'host' => $host, 'port' => $port, 'message' => (string) $errstr];
+                $errors[] = ['code' => 'mysql_dns_or_network_failure', 'host' => $host, 'port' => $port, 'message' => (string) $errstr];
             }
 
             if ($name !== '' && $user !== '') {
                 try {
-                    $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $host, $port, $name, $charset);
-                    $pdo = new PDO($dsn, $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                    $pdo = new PDO(DbConfig::dsn($dbConfig), $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 3]);
                     $pdo->query('SELECT 1')->fetchColumn();
                     $checks['mysql_select_1'] = true;
 
@@ -57,6 +58,8 @@ final class SystemCheckService
                     $pdo->exec("CREATE INDEX idx_marker ON {$probe}(marker)");
                     $pdo->exec("DROP TABLE {$probe}");
                     $checks['mysql_schema_permissions'] = true;
+                } catch (PDOException $e) {
+                    $errors[] = ['code' => $this->classifyPdoFailure($e), 'message' => $e->getMessage()];
                 } catch (Throwable $e) {
                     $errors[] = ['code' => 'mysql_connection_or_permission_failed', 'message' => $e->getMessage()];
                 }
@@ -67,11 +70,28 @@ final class SystemCheckService
             $errors[] = ['code' => 'pdo_mysql_missing', 'message' => 'PDO MySQL extension is required'];
         }
 
+        $ok = !in_array(false, $checks, true) && $errors === [];
+
         return [
-            'ok' => !in_array(false, $checks, true),
+            'ok' => $ok,
+            'status' => $ok ? 'pass' : 'fail',
+            'code' => $ok ? 'system_check_passed' : 'system_check_failed',
             'checks' => $checks,
             'errors' => $errors,
             'checked_at' => date(DATE_ATOM),
         ];
+    }
+
+    private function classifyPdoFailure(PDOException $e): string
+    {
+        $message = strtolower($e->getMessage());
+
+        return match (true) {
+            str_contains($message, 'access denied') => 'mysql_auth_failure',
+            str_contains($message, 'timeout') => 'mysql_timeout',
+            str_contains($message, 'unknown database') => 'mysql_database_not_found',
+            str_contains($message, 'permission denied') => 'mysql_permission_failure',
+            default => 'mysql_connection_or_permission_failed',
+        };
     }
 }

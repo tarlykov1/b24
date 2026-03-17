@@ -1,15 +1,25 @@
-# Installation Troubleshooting
+# Troubleshooting installer/runtime (offline MySQL-only)
 
-## Common blockers
-- `platform_schema_overlaps_bitrix_operational_schema`: set dedicated MySQL schema.
-- `source_target_identical_detected`: verify endpoints/DSNs and diagnostic intent.
-- `*_unsafe_path`: move install/log/temp dirs outside Bitrix core paths.
+## deployment:check returns fail
+Run:
+```bash
+php bin/migration-module deployment:check
+```
+Output is always machine-readable JSON with `status`, `checks`, `errors`, `code`.
+No fatal stack-trace path is expected for DB connection errors.
 
-## Diagnostics
-- Run `bin/migration-module install:report --install-config=<file>`.
-- Run `bin/migration-module db:status --install-config=<file>`.
+## Installer completed but runtime still asks installer
+Verify canonical config exists:
+- `config/generated-install-config.json`
+- contains top-level `mysql`.
 
-## MySQL connectivity checklist
-- Ensure migration host can reach remote MySQL `host:port` over network and firewall rules.
-- Verify PDO MySQL extension is installed (`pdo_mysql`).
-- Verify DB user has install-time rights: `CREATE`, `ALTER`, `INDEX` on migration schema.
+Effective config source priority:
+1. explicit override;
+2. `DB_*` env;
+3. generated config artifact.
+
+## MySQL auth/permission errors
+Use installer check-connection first, then validate user has create/alter/index/drop rights for schema bootstrap.
+
+## SQLite references
+Runtime is MySQL-only; SQLite artifacts in tests/legacy paths are not deployment backends.

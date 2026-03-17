@@ -24,13 +24,13 @@ Core runtime components:
 Future platform capabilities are intentionally isolated and not exposed in the runtime CLI.
 
 ## Quick start
+For real offline deployment flow, see `docs/QUICKSTART.md` and `docs/OFFLINE-INSTALL.md`.
+
+Minimal CLI smoke:
 ```bash
-php bin/migration-module validate
-php bin/migration-module config:validate --config=migration.config.yml
+php bin/migration-module deployment:check
 JOB_ID=$(php bin/migration-module create-job | jq -r .job_id)
-php bin/migration-module plan --job-id=$JOB_ID
-php bin/migration-module dry-run --job-id=$JOB_ID
-php bin/migration-module execute --job-id=$JOB_ID
+php bin/migration-module status --job-id=$JOB_ID
 ```
 
 ## CLI commands
@@ -109,6 +109,8 @@ Compatibility boundary note: repository still contains legacy cutover/orchestrat
 - SQLite is no longer supported.
 - Configure only MySQL via `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CHARSET`, `DB_COLLATION`.
 - Runtime and installer both require PDO MySQL and external MySQL connectivity.
+- Canonical config artifact: `config/generated-install-config.json` (`mysql` section).
+- Config priority: explicit runtime override > `DB_*` env > generated config file.
 
 
 ## Offline portable deployment

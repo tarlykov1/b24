@@ -11,10 +11,12 @@ final class MySqlStorage
 {
     private PDO $pdo;
 
-    public function __construct(string $dsn)
+    public function __construct(string $dsn, string $user = '', string $password = '')
     {
         $dsn = $this->buildMysqlDsn($dsn);
-        $this->pdo = new PDO($dsn, (string) ($_ENV['DB_USER'] ?? ''), (string) ($_ENV['DB_PASSWORD'] ?? ''));
+        $dbUser = $user !== '' ? $user : (string) ($_ENV['DB_USER'] ?? '');
+        $dbPassword = $password !== '' ? $password : (string) ($_ENV['DB_PASSWORD'] ?? '');
+        $this->pdo = new PDO($dsn, $dbUser, $dbPassword);
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
 
@@ -63,7 +65,7 @@ final class MySqlStorage
     public function jobStatus(string $jobId): ?string
     {
         $stmt = $this->pdo->prepare('SELECT status FROM jobs WHERE id=:job_id LIMIT 1');
-        $stmt->execute(['job_id' => $jobId]);
+        $stmt->execute(['state_key' => 'job:' . $jobId]);
         $status = $stmt->fetchColumn();
 
         return is_string($status) ? $status : null;
@@ -114,7 +116,7 @@ final class MySqlStorage
 
     public function saveCheckpoint(string $jobId, string $entityType, string $lastSourceId): void
     {
-        $stmt = $this->pdo->prepare('REPLACE INTO checkpoint(job_id, entity_type, last_source_id, updated_at) VALUES(:job_id,:entity_type,:last_source_id,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO checkpoints(job_id, entity_type, last_source_id, updated_at) VALUES(:job_id,:entity_type,:last_source_id,CURRENT_TIMESTAMP)');
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'last_source_id' => $lastSourceId]);
     }
 
@@ -143,7 +145,7 @@ final class MySqlStorage
 
     public function saveDiff(string $jobId, string $entityType, string $sourceId, string $category, string $detail): void
     {
-        $stmt = $this->pdo->prepare('INSERT INTO diff(job_id, entity_type, source_id, category, detail) VALUES(:job_id,:entity_type,:source_id,:category,:detail)');
+        $stmt = $this->pdo->prepare('INSERT INTO diff_state(job_id, entity_type, source_id, category, detail_json) VALUES(:job_id,:entity_type,:source_id,:category,:detail)');
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType, 'source_id' => $sourceId, 'category' => $category, 'detail' => $detail]);
     }
 
@@ -158,15 +160,15 @@ final class MySqlStorage
     /** @param array<string,mixed> $state */
     public function saveDistributedControlPlaneState(string $jobId, array $state): void
     {
-        $stmt = $this->pdo->prepare('REPLACE INTO distributed_control_plane(job_id, state_json, updated_at) VALUES(:job_id,:state_json,CURRENT_TIMESTAMP)');
-        $stmt->execute(['job_id' => $jobId, 'state_json' => (string) json_encode($state, JSON_UNESCAPED_UNICODE)]);
+        $stmt = $this->pdo->prepare('REPLACE INTO control_plane_settings(`key`, value_json, updated_at) VALUES(:state_key,:state_json,CURRENT_TIMESTAMP)');
+        $stmt->execute(['state_key' => 'job:' . $jobId, 'state_json' => (string) json_encode($state, JSON_UNESCAPED_UNICODE)]);
     }
 
     /** @return array<string,mixed>|null */
     public function distributedControlPlaneState(string $jobId): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT state_json FROM distributed_control_plane WHERE job_id=:job_id LIMIT 1');
-        $stmt->execute(['job_id' => $jobId]);
+        $stmt = $this->pdo->prepare('SELECT value_json FROM control_plane_settings WHERE `key`=:state_key LIMIT 1');
+        $stmt->execute(['state_key' => 'job:' . $jobId]);
         $raw = $stmt->fetchColumn();
         if ($raw === false || !is_string($raw) || $raw === '') {
             return null;
@@ -181,7 +183,7 @@ final class MySqlStorage
     /** @return array<string,mixed>|null */
     public function deltaCursor(string $jobId, string $entityType): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM delta_cursors WHERE job_id=:job_id AND entity_type=:entity_type LIMIT 1');
+        $stmt = $this->pdo->prepare('SELECT * FROM delta_sync_cursors WHERE job_id=:job_id AND entity_type=:entity_type LIMIT 1');
         $stmt->execute(['job_id' => $jobId, 'entity_type' => $entityType]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -190,12 +192,11 @@ final class MySqlStorage
 
     public function saveDeltaCursor(string $jobId, string $entityType, ?string $lastSyncTimestamp, ?string $lastEntityId, ?string $watermark, string $phase): void
     {
-        $stmt = $this->pdo->prepare('REPLACE INTO delta_cursors(job_id, entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at) VALUES(:job_id,:entity_type,:last_sync_timestamp,:last_entity_id,:watermark,:phase,CURRENT_TIMESTAMP)');
+        $stmt = $this->pdo->prepare('REPLACE INTO delta_sync_cursors(job_id, entity_type, phase, cursor_value, watermark, updated_at) VALUES(:job_id,:entity_type,:phase,:cursor_value,:watermark,CURRENT_TIMESTAMP)');
         $stmt->execute([
             'job_id' => $jobId,
             'entity_type' => $entityType,
-            'last_sync_timestamp' => $lastSyncTimestamp,
-            'last_entity_id' => $lastEntityId,
+            'cursor_value' => (string) json_encode(['last_sync_timestamp' => $lastSyncTimestamp, 'last_entity_id' => $lastEntityId], JSON_UNESCAPED_UNICODE),
             'watermark' => $watermark,
             'phase' => $phase,
         ]);
@@ -385,7 +386,7 @@ final class MySqlStorage
         }
 
         $cursors = [];
-        $stmt = $this->pdo->prepare('SELECT entity_type, last_sync_timestamp, last_entity_id, watermark, phase, updated_at FROM delta_cursors WHERE job_id=:job_id ORDER BY entity_type');
+        $stmt = $this->pdo->prepare('SELECT entity_type, cursor_value, watermark, phase, updated_at FROM delta_sync_cursors WHERE job_id=:job_id ORDER BY entity_type');
         $stmt->execute(['job_id' => $jobId]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
             $cursors[] = $row;
@@ -958,7 +959,7 @@ final class MySqlStorage
     /** @return array<string,mixed> */
     public function summary(string $jobId): array
     {
-        $tables = ['queue', 'entity_map', 'diff', 'integrity_issues', 'logs', 'execution_batches', 'execution_steps', 'failure_events', 'verification_results'];
+        $tables = ['queue', 'entity_map', 'diff_state', 'integrity_issues', 'logs', 'execution_batches', 'execution_steps', 'failure_events', 'verification_results'];
         $summary = [];
         foreach ($tables as $table) {
             $stmt = $this->pdo->prepare("SELECT COUNT(*) as c FROM {$table} WHERE job_id=:job_id");

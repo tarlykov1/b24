@@ -186,3 +186,81 @@ CREATE TABLE IF NOT EXISTS hypercare_metrics (
   KEY idx_hypercare_job_metric (job_id, metric_name, measured_at),
   CONSTRAINT fk_hypercare_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS delta_changes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  source_id VARCHAR(128) NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  payload JSON NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'pending',
+  applied_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_delta_changes_job_status (job_id, status, id),
+  CONSTRAINT fk_delta_changes_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS reconciliation_results (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity VARCHAR(64) NOT NULL,
+  entity_id VARCHAR(128) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  diff_type VARCHAR(64) NOT NULL,
+  diff_details JSON NOT NULL,
+  severity VARCHAR(24) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_reconciliation_job (job_id, status, created_at),
+  CONSTRAINT fk_reconciliation_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cutover_reports (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  report_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_cutover_reports_job (job_id, created_at),
+  CONSTRAINT fk_cutover_reports_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS execution_batches (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_execution_batches_job (job_id, status),
+  CONSTRAINT fk_execution_batches_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS execution_steps (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  step_name VARCHAR(128) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_execution_steps_job (job_id, status),
+  CONSTRAINT fk_execution_steps_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS failure_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  error_code VARCHAR(64) NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_failure_events_job (job_id, created_at),
+  CONSTRAINT fk_failure_events_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS verification_results (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  verify_depth VARCHAR(32) NOT NULL,
+  result_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_verification_results_job (job_id, created_at),
+  CONSTRAINT fk_verification_results_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
