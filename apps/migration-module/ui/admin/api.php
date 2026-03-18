@@ -7,9 +7,9 @@ use MigrationModule\Application\Operations\RuntimeControlPlaneService;
 use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\Application\Security\SecurityContext;
 use MigrationModule\Application\Security\SecurityGovernanceService;
-use MigrationModule\Infrastructure\Bitrix\BitrixRestClient;
 use MigrationModule\Infrastructure\Http\AdminAuth;
 use MigrationModule\Infrastructure\Http\OperationsConsoleApi;
+use MigrationModule\Installation\ConnectivityProbeService;
 use MigrationModule\Installation\ConfigLintService;
 use MigrationModule\Installation\InstallWizardService;
 use MigrationModule\Preflight\CheckContext;
@@ -57,11 +57,7 @@ if ($path === '/stream') {
 }
 
 if ($path === '/health' || $path === '/ready' || $path === '/metrics') {
-    $client = null;
-    if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
-        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
-    }
-    $service = new SystemCheckService($client);
+    $service = new SystemCheckService();
     $response = $service->check($dbConfig);
     if ($path === '/metrics') {
         header('Content-Type: text/plain; version=0.0.4');
@@ -128,6 +124,7 @@ if ($path === '/preflight' || $path === '/api/preflight') {
 
 if (str_starts_with($path, '/install/')) {
     $wizard = new InstallWizardService();
+    $probe = new ConnectivityProbeService();
     $config = is_array($query['config'] ?? null) ? $query['config'] : [];
 
     try {
@@ -138,6 +135,7 @@ if (str_starts_with($path, '/install/')) {
                 'checks' => [
                     'php_version' => PHP_VERSION,
                     'pdo_mysql' => extension_loaded('pdo_mysql'),
+                    'curl' => extension_loaded('curl'),
                     'json' => extension_loaded('json'),
                     'writable_config_dir' => is_writable(dirname(__DIR__, 4) . '/config') || !is_dir(dirname(__DIR__, 4) . '/config'),
                 ],
@@ -145,27 +143,13 @@ if (str_starts_with($path, '/install/')) {
             $response['ok'] = !in_array(false, $response['checks'], true);
             $response['status'] = $response['ok'] ? 'pass' : 'fail';
         } elseif ($path === '/install/check-connection') {
-            $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
+            $response = $probe->probeMySql((array) ($config['mysql'] ?? []));
         } elseif ($path === '/install/test-source') {
             $source = (array) ($config['source'] ?? []);
-            $response = [
-                'ok' => (string) ($source['url'] ?? '') !== '' && (string) ($source['token'] ?? '') !== '',
-                'status' => ((string) ($source['url'] ?? '') !== '' && (string) ($source['token'] ?? '') !== '') ? 'pass' : 'fail',
-                'details' => [
-                    'url' => (string) ($source['url'] ?? ''),
-                    'auth' => ((string) ($source['token'] ?? '') !== '') ? 'provided' : 'missing',
-                ],
-            ];
+            $response = $probe->probeBitrix($source, 'source');
         } elseif ($path === '/install/test-target') {
             $target = (array) ($config['target'] ?? []);
-            $response = [
-                'ok' => (string) ($target['url'] ?? '') !== '' && (string) ($target['token'] ?? '') !== '',
-                'status' => ((string) ($target['url'] ?? '') !== '' && (string) ($target['token'] ?? '') !== '') ? 'pass' : 'fail',
-                'details' => [
-                    'url' => (string) ($target['url'] ?? ''),
-                    'auth' => ((string) ($target['token'] ?? '') !== '') ? 'provided' : 'missing',
-                ],
-            ];
+            $response = $probe->probeBitrix($target, 'target');
         } elseif ($path === '/install/init-schema') {
             $mysql = (array) ($config['mysql'] ?? []);
             $dbCfg = DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4));
@@ -364,24 +348,26 @@ if ($path === '/audit/portal') {
     $response = $api->meta();
     $response['dangerous_actions'] = $dangerousActions;
 } elseif ($path === '/system:check') {
-    $client = null;
-    if (($_ENV['BITRIX_WEBHOOK_URL'] ?? '') !== '' && ($_ENV['BITRIX_WEBHOOK_TOKEN'] ?? '') !== '') {
-        $client = new BitrixRestClient((string) $_ENV['BITRIX_WEBHOOK_URL'], (string) $_ENV['BITRIX_WEBHOOK_TOKEN']);
-    }
-    $response = (new SystemCheckService($client))->check();
+    $response = (new SystemCheckService())->check();
 
 } else {
-    if (preg_match('#^/control-center/jobs/([^/]+)$#', $path, $m) === 1) {
-        $response = $api->jobDetails($m[1]);
-    } elseif (preg_match('#^/control-center/jobs/([^/]+)/(pause|resume)$#', $path, $m) === 1) {
-        $response = ['jobId' => $m[1], 'action' => $m[2], 'status' => $m[2] === 'pause' ? 'paused' : 'running'];
+    $legacyJobsEndpoints = [
+        '/jobs',
+        '/jobs/details',
+        '/control-center/jobs',
+    ];
+    if (in_array($path, $legacyJobsEndpoints, true) || preg_match('#^/control-center/jobs/([^/]+)(/(pause|resume))?$#', $path) === 1) {
+        $response = [
+            'ok' => false,
+            'error' => 'deprecated_endpoint',
+            'class' => 'compatibility_only',
+            'message' => 'Legacy jobs flow is deprecated. Use canonical /runtime endpoints only.',
+            'canonical' => ['/runtime/jobs', '/runtime/jobs/{jobId}', '/runtime/jobs/{jobId}/action'],
+        ];
     } else {
 
     $response = match ($path) {
         '/dashboard' => $api->dashboard($query['jobId'] ?? null),
-        '/jobs' => $api->jobs($query),
-        '/jobs/details' => $api->jobDetails((string) ($query['jobId'] ?? 'latest')),
-        '/control-center/jobs' => $api->jobs($query),
         '/control-center/conflicts' => $api->conflicts($query),
         '/control-center/repairs' => $api->repairs($query),
         '/conflicts' => $api->conflicts($query),
