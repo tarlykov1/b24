@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MigrationModule\Application\AuditDiscovery\AuditDiscoveryService;
+use MigrationModule\Application\Operations\RuntimeControlPlaneService;
 use MigrationModule\Application\Readiness\SystemCheckService;
 use MigrationModule\Application\Security\SecurityContext;
 use MigrationModule\Application\Security\SecurityGovernanceService;
@@ -130,18 +131,58 @@ if (str_starts_with($path, '/install/')) {
     $config = is_array($query['config'] ?? null) ? $query['config'] : [];
 
     try {
-        if ($path === '/install/check-connection') {
+        if ($path === '/install/environment-check') {
+            $response = [
+                'ok' => true,
+                'status' => 'pass',
+                'checks' => [
+                    'php_version' => PHP_VERSION,
+                    'pdo_mysql' => extension_loaded('pdo_mysql'),
+                    'json' => extension_loaded('json'),
+                    'writable_config_dir' => is_writable(dirname(__DIR__, 4) . '/config') || !is_dir(dirname(__DIR__, 4) . '/config'),
+                ],
+            ];
+            $response['ok'] = !in_array(false, $response['checks'], true);
+            $response['status'] = $response['ok'] ? 'pass' : 'fail';
+        } elseif ($path === '/install/check-connection') {
             $response = (new SystemCheckService())->check((array) ($config['mysql'] ?? []));
+        } elseif ($path === '/install/test-source') {
+            $source = (array) ($config['source'] ?? []);
+            $response = [
+                'ok' => (string) ($source['url'] ?? '') !== '' && (string) ($source['token'] ?? '') !== '',
+                'status' => ((string) ($source['url'] ?? '') !== '' && (string) ($source['token'] ?? '') !== '') ? 'pass' : 'fail',
+                'details' => [
+                    'url' => (string) ($source['url'] ?? ''),
+                    'auth' => ((string) ($source['token'] ?? '') !== '') ? 'provided' : 'missing',
+                ],
+            ];
+        } elseif ($path === '/install/test-target') {
+            $target = (array) ($config['target'] ?? []);
+            $response = [
+                'ok' => (string) ($target['url'] ?? '') !== '' && (string) ($target['token'] ?? '') !== '',
+                'status' => ((string) ($target['url'] ?? '') !== '' && (string) ($target['token'] ?? '') !== '') ? 'pass' : 'fail',
+                'details' => [
+                    'url' => (string) ($target['url'] ?? ''),
+                    'auth' => ((string) ($target['token'] ?? '') !== '') ? 'provided' : 'missing',
+                ],
+            ];
         } elseif ($path === '/install/init-schema') {
             $mysql = (array) ($config['mysql'] ?? []);
             $dbCfg = DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4));
             $pdo = new PDO(DbConfig::dsn($dbCfg), (string) $dbCfg['user'], (string) $dbCfg['password']);
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $response = $wizard->initDb($pdo, __DIR__ . '/../../../../db/mysql_platform_schema.sql');
-        } elseif ($path === '/install/generate-config') {
+        } elseif ($path === '/install/generate-config' || $path === '/install/save-canonical-config') {
             $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/generated-install-config.json');
+            if ($path === '/install/save-canonical-config') {
+                $outputPath = (string) ($query['output'] ?? __DIR__ . '/../../../../config/runtime.install.json');
+            }
             $mysql = (array) ($config['mysql'] ?? []);
-            $payload = ['mysql' => DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4))];
+            $payload = [
+                'mysql' => DbConfig::fromRuntimeSources($mysql, dirname(__DIR__, 4)),
+                'source' => (array) ($config['source'] ?? []),
+                'target' => (array) ($config['target'] ?? []),
+            ];
             $response = $wizard->generateConfig($payload, $outputPath);
         } else {
             $response = ['ok' => false, 'error' => 'unknown_install_endpoint', 'path' => $path];
@@ -197,6 +238,77 @@ $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $security = new SecurityGovernanceService();
 $demoMode = (bool) filter_var((string) ($query['demo_mode'] ?? ($_ENV['MIGRATION_DEMO_MODE'] ?? '0')), FILTER_VALIDATE_BOOLEAN);
 $api = new OperationsConsoleApi($pdo, $security, $demoMode);
+$runtime = new RuntimeControlPlaneService($pdo);
+
+if ($path === '/runtime/jobs' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $response = $runtime->listJobs((int) ($query['limit'] ?? 25), (int) ($query['offset'] ?? 0));
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($path === '/runtime/jobs/create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $mode = (string) ($query['mode'] ?? 'execute');
+    $response = $runtime->createJob($mode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (preg_match('#^/runtime/jobs/([^/]+)$#', $path, $m) === 1 && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $response = $runtime->jobDetails($m[1]);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (preg_match('#^/runtime/jobs/([^/]+)/logs$#', $path, $m) === 1 && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $response = $runtime->logs($m[1], (int) ($query['limit'] ?? 100), (int) ($query['offset'] ?? 0));
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (preg_match('#^/runtime/jobs/([^/]+)/reports$#', $path, $m) === 1 && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $response = ['items' => $runtime->reports($m[1])];
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (preg_match('#^/runtime/jobs/([^/]+)/action$#', $path, $m) === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string) ($query['action'] ?? 'execute');
+    $response = $runtime->lifecycleAction($m[1], $action);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (preg_match('#^/runtime/jobs/([^/]+)/reports/([0-9]+)/download$#', $path, $m) === 1 && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $jobId = $m[1];
+    $reportId = (int) $m[2];
+    $items = $runtime->reports($jobId);
+    $report = null;
+    foreach ($items as $item) {
+        if ((int) ($item['reportId'] ?? 0) === $reportId) {
+            $report = $item;
+            break;
+        }
+    }
+
+    if (!is_array($report)) {
+        http_response_code(404);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'error' => 'report_not_found']);
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="migration-report-' . $jobId . '-' . $reportId . '.json"');
+    echo json_encode($report['payload'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 
 $role = (string) ($query['role'] ?? 'MigrationAdmin');
 $context = new SecurityContext(
