@@ -65,7 +65,7 @@ final class MySqlStorage
     public function jobStatus(string $jobId): ?string
     {
         $stmt = $this->pdo->prepare('SELECT status FROM jobs WHERE id=:job_id LIMIT 1');
-        $stmt->execute(['state_key' => 'job:' . $jobId]);
+        $stmt->execute(['job_id' => $jobId]);
         $status = $stmt->fetchColumn();
 
         return is_string($status) ? $status : null;
@@ -514,8 +514,9 @@ final class MySqlStorage
 
     public function saveMigrationPlan(string $jobId, string $planId, string $planHash, string $configHash, array $plan): void
     {
-        $this->pdo->prepare('REPLACE INTO migration_jobs(job_id, plan_id, mode, status, updated_at) VALUES(:job_id,:plan_id,:mode,:status,CURRENT_TIMESTAMP)')
-            ->execute(['job_id' => $jobId, 'plan_id' => $planId, 'mode' => 'deterministic', 'status' => 'planned']);
+        $this->assertJobExists($jobId);
+        $this->pdo->prepare('UPDATE jobs SET mode=:mode, status=:status, updated_at=CURRENT_TIMESTAMP WHERE id=:job_id')
+            ->execute(['job_id' => $jobId, 'mode' => 'deterministic', 'status' => 'planned']);
 
         $this->pdo->prepare('REPLACE INTO migration_plans(plan_id, job_id, plan_hash, config_hash, plan_json, created_at) VALUES(:plan_id,:job_id,:plan_hash,:config_hash,:plan_json,CURRENT_TIMESTAMP)')
             ->execute([
