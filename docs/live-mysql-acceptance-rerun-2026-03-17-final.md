@@ -1,109 +1,89 @@
-# Final live MySQL acceptance rerun (post-remediation, canonical precedence verification)
+# Final live MySQL acceptance rerun (focused success-path proof, canonical endpoint)
 
 ## 1) Summary
-- Re-ran canonical installer config flow, installer/CLI endpoint parity checks, `deployment:check`, installer `check-connection` + `init-schema`, CLI lifecycle smoke (`create-job`, `status`, `report`), and vendor-less web entrypoint smoke.
-- Installer bootstrap/path regressions were addressed before rerun (`web/api.php` bridge added, admin API bootstrap path corrected, `init-schema` now structured on bootstrap failure).
-- **Rerun result: FAIL / NOT ACCEPTED** because live MySQL success-path is still not reachable in this environment (effective endpoint `10.10.10.10:3306` unreachable).
+- Performed a focused acceptance rerun on **2026-03-18** only for live MySQL success-path proof, using canonical endpoint `10.10.10.10:3306`.
+- Executed installer endpoints (`generate-config`, `check-connection`, `init-schema`), CLI flow (`deployment:check`, `create-job`, `status`, `report`), and runtime/admin readiness (`GET /api.php/ready`).
+- **Final result: NOT ACCEPTED**. All relevant paths resolve to canonical endpoint and fail consistently with `Network is unreachable`; no evidence of placeholder masking or precedence regression.
 
-## 2) Evidence
+## 2) What was verified
+1. Canonical installer artifact can be generated with live endpoint values.
+2. Installer path effective resolution uses canonical endpoint even when placeholder payload is provided.
+3. CLI path effective resolution uses canonical endpoint even when `migration.config.yml` contains placeholders.
+4. Runtime/admin API readiness path resolves to the same canonical endpoint.
+5. Remaining failure is connectivity to `10.10.10.10:3306`, not config precedence/masking.
 
-### A. Canonical config / installer parity
-Executed:
-- `POST /api.php/install/generate-config` (via `php -S 127.0.0.1:18081 -t web`)
+## 3) Exact commands/endpoints executed
 
-Observed:
-- HTTP `200` with structured JSON `ok=true`.
-- `config/generated-install-config.json` created and contains canonical live MySQL target (`10.10.10.10:3306`, `live_acceptance_db`, `live_acceptance_user`).
-- Placeholder CLI override values (`127.0.0.1`, `bitrix_migration`, `migration_user`, `change_me`) were intentionally supplied and **did not** override canonical installer-generated values.
-
-### B. deployment:check success-path
-Executed:
-- `php bin/migration-module deployment:check`
-
-Observed:
-- Structured JSON returned.
-- `ok=false`, `status=fail`, `code=system_check_failed`.
-- Exit code `2`.
-- Errors show network failure to effective endpoint `10.10.10.10:3306`.
-
-### C. Installer MySQL success-path
-Executed:
-- `POST /api.php/install/check-connection`
-- `POST /api.php/install/init-schema`
-
-Observed:
-- `check-connection`: HTTP `200`, structured fail (`ok=false`) with same effective endpoint (`10.10.10.10:3306`).
-- `init-schema`: HTTP `200`, structured fail (`ok=false`, `code=installer_mysql_bootstrap_failed`), no raw fatal and no HTTP 500.
-- Schema init success not achieved due unreachable MySQL.
-
-### D. Lifecycle smoke on live MySQL
-Executed:
-- `php bin/migration-module create-job --config=migration.config.yml`
-- `php bin/migration-module status --config=migration.config.yml --job-id=rerun-smoke`
-- `php bin/migration-module report --config=migration.config.yml --job-id=rerun-smoke`
-
-Observed:
-- All commands return structured JSON fail-safe (`error_code=mysql_connection_refused`).
-- Exit code for each command: `2`.
-- `create-job` did not produce a real `job_id` because MySQL is unreachable.
-
-### E. Vendor-less/offline web entrypoint smoke
-Executed:
-- Verified `vendor/autoload.php` absent.
-- `GET /` via `web/index.php`.
-
-Observed:
-- HTTP `200` controlled installer HTML.
-- No `Class not found` / raw fatal at entrypoint startup.
-
-### F. Consistency and precedence check
-- Installer and CLI both resolve and report the same effective MySQL endpoint (`10.10.10.10:3306`).
-- Placeholder CLI/template override values no longer mask canonical installer-generated configuration.
-- Result is internally consistent but remains fail-path only; success-path is not proven on live MySQL.
-
-## 3) Acceptance criteria matrix
-- canonical config generated — **PASS**
-  `/install/generate-config` returned `ok=true`; canonical file exists at `config/generated-install-config.json`.
-
-- installer/CLI endpoint parity — **PASS (fail-path parity)**
-  Installer `check-connection` and CLI `deployment:check` both resolve canonical `10.10.10.10:3306`.
-
-- placeholder-masking regression check — **PASS**
-  Placeholder CLI override values do not mask installer-generated canonical config.
-
-- deployment:check success-path — **FAIL**
-  Structured output returned, but `ok=false`; exit `2`.
-
-- check-connection success — **FAIL**
-  Structured response exists, but MySQL connect check is not successful.
-
-- init-schema success — **FAIL**
-  Structured response exists, but schema init cannot proceed without reachable MySQL.
-
-- create-job returns job_id — **FAIL**
-  Structured connection-refused response; no real `job_id`.
-
-- status/report smoke success — **FAIL**
-  Both commands return structured fail-safe due MySQL unreachability.
-
-- vendor-less web entrypoint success — **PASS**
-  Controlled installer page response from `GET /` without raw fatal.
-
-## 4) Blockers
-1. **BLOCKER / HIGH** — live MySQL endpoint unreachable at effective runtime target `10.10.10.10:3306`.
-   Why it blocks acceptance: success-path cannot be proven for `deployment:check`, installer init-schema success, or lifecycle job operations.
-
-## 5) Final verdict
-- **not accepted** — **FAIL** because live MySQL success-path is still not demonstrated in this rerun.
-
-## 6) Testing
-Full executed commands / calls:
+### A. Installer server
 - `php -S 127.0.0.1:18081 -t web`
-- `curl -X POST http://127.0.0.1:18081/api.php/install/generate-config ...`
-- `curl -X POST http://127.0.0.1:18081/api.php/install/check-connection ...`
-- `curl -X POST http://127.0.0.1:18081/api.php/install/init-schema ...`
-- `curl http://127.0.0.1:18081/`
+
+### B. Installer generate-config
+- `POST /api.php/install/generate-config`
+- Command:
+  - `curl -sS -D /tmp/gen_headers.txt -o /tmp/gen_body.json -X POST http://127.0.0.1:18081/api.php/install/generate-config -H 'Content-Type: application/json' --data '{"config":{"mysql":{"host":"10.10.10.10","port":3306,"name":"live_acceptance_db","user":"live_acceptance_user","password":"live_acceptance_pass"}}}'`
+
+### C. Installer check-connection (placeholder probe)
+- `POST /api.php/install/check-connection`
+- Command:
+  - `curl -sS -D /tmp/check_headers.txt -o /tmp/check_body.json -X POST http://127.0.0.1:18081/api.php/install/check-connection -H 'Content-Type: application/json' --data '{"config":{"mysql":{"host":"127.0.0.1","port":3306,"name":"bitrix_migration","user":"migration_user","password":"change_me"}}}'`
+
+### D. Installer init-schema (placeholder probe)
+- `POST /api.php/install/init-schema`
+- Command:
+  - `curl -sS -D /tmp/init_headers.txt -o /tmp/init_body.json -X POST http://127.0.0.1:18081/api.php/install/init-schema -H 'Content-Type: application/json' --data '{"config":{"mysql":{"host":"127.0.0.1","port":3306,"name":"bitrix_migration","user":"migration_user","password":"change_me"}}}'`
+
+### E. Runtime/admin API path
+- `GET /api.php/ready`
+- Command:
+  - `curl -sS -D /tmp/ready_headers.txt -o /tmp/ready_body.json http://127.0.0.1:18081/api.php/ready`
+
+### F. CLI path
 - `php bin/migration-module deployment:check`
 - `php bin/migration-module create-job --config=migration.config.yml`
-- `php bin/migration-module status --config=migration.config.yml --job-id=rerun-smoke`
-- `php bin/migration-module report --config=migration.config.yml --job-id=rerun-smoke`
+- `php bin/migration-module status --config=migration.config.yml --job-id=live-rerun-20260318`
+- `php bin/migration-module report --config=migration.config.yml --job-id=live-rerun-20260318`
+
+### G. External TCP reachability probe
+- `timeout 5 bash -c 'echo > /dev/tcp/10.10.10.10/3306'`
+
+## 4) Effective DB endpoint resolution evidence
+
+### Installer path evidence
+- `generate-config` returned `ok=true` and wrote canonical artifact with:
+  - `host=10.10.10.10`
+  - `port=3306`
+  - `name=live_acceptance_db`
+  - `user=live_acceptance_user`
+- `check-connection` was intentionally called with placeholders (`127.0.0.1`, `bitrix_migration`, `migration_user`, `change_me`) but response errors still show:
+  - `host=10.10.10.10`
+  - `port=3306`
+  - `message=Network is unreachable`
+
+### CLI path evidence
+- `migration.config.yml` contains placeholder storage values (`127.0.0.1`, `bitrix_migration`, `migration_user`, `change_me`), but CLI responses for `deployment:check`, `create-job`, `status`, `report` all report:
+  - `host=10.10.10.10`
+  - `port=3306`
+  - SQLSTATE/network-unreachable failure
+
+### Runtime/admin API evidence
+- `GET /api.php/ready` returns `503` with same error payload:
+  - `host=10.10.10.10`
+  - `port=3306`
+  - `message=Network is unreachable`
+
+## 5) Observed results/errors
+- `generate-config`: HTTP `200`, `ok=true`, canonical config generated.
+- `check-connection`: HTTP `200`, `ok=false`, `system_check_failed`, network failure to `10.10.10.10:3306`.
+- `init-schema`: HTTP `200`, `ok=false`, `installer_mysql_bootstrap_failed`, SQLSTATE network unreachable.
+- `deployment:check`: exit `2`, `ok=false`, network failure to `10.10.10.10:3306`.
+- `create-job`: exit `2`, `ok=false`, `mysql_connection_or_permission_failed`, host/port `10.10.10.10:3306`.
+- `status`: exit `2`, same failure class and endpoint.
+- `report`: exit `2`, same failure class and endpoint.
+- TCP probe to `10.10.10.10:3306`: `Network is unreachable`.
+
+## 6) Acceptance verdict
+- **NOT ACCEPTED**.
+
+## 7) Single remaining blocker
+- **External connectivity to canonical live MySQL endpoint is unavailable**: `10.10.10.10:3306` returns `Network is unreachable` from installer path, CLI path, runtime/admin path, and direct TCP probe.
+- No remaining evidence of internal blocker in precedence/placeholder resolution.
